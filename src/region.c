@@ -56,7 +56,9 @@ romx_result_t romx_reader_read_region(
     uint64_t *bytes_read,
     romx_error_t *error)
 {
-    romx_region_info_t info;
+    /* Initialize defensively: GCC cannot infer that the helper populates all
+     * fields on every successful return through its out-parameter. */
+    romx_region_info_t info = { UINT64_C(0), UINT64_C(0) };
     uint64_t count;
     romx_result_t result;
 
@@ -94,7 +96,9 @@ romx_result_t romx_reader_copy_region(
     const romx_sink_t *sink,
     romx_error_t *error)
 {
-    romx_region_info_t info;
+    /* Initialize defensively: GCC cannot infer that the helper populates all
+     * fields on every successful return through its out-parameter. */
+    romx_region_info_t info = { UINT64_C(0), UINT64_C(0) };
     uint8_t *buffer;
     uint64_t position = UINT64_C(0);
     romx_result_t result;
