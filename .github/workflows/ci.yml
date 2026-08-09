@@ -101,7 +101,7 @@ jobs:
           }
 
       - name: Test
-        run: ctest --test-dir build --build-config Release --output-on-failure --no-tests=error
+        run: ctest --test-dir build --build-config Release --output-on-failure --no-tests=error --timeout 120
 
       - name: Install
         run: >-
