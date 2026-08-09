@@ -55,6 +55,9 @@ jobs:
               -DCMAKE_CXX_FLAGS=/WX
 
     steps:
+      - name: Disable Git line-ending conversion
+        run: git config --global core.autocrlf false
+
       - name: Checkout libromx
         uses: actions/checkout@v6
 
@@ -117,6 +120,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Disable Git line-ending conversion
+        run: git config --global core.autocrlf false
+
       - name: Checkout libromx
         uses: actions/checkout@v6
 
