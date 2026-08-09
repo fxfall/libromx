@@ -84,6 +84,22 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
+      - name: Trace Windows phase1 test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          ROMX_TEST_TRACE: "1"
+        run: |
+          $test = Join-Path $env:GITHUB_WORKSPACE "build\tests\Release\romx_phase1_tests.exe"
+          $process = Start-Process -FilePath $test -WorkingDirectory $env:GITHUB_WORKSPACE -NoNewWindow -PassThru
+          if (-not $process.WaitForExit(60000)) {
+            $process.Kill()
+            throw "romx.phase1 did not finish within 60 seconds"
+          }
+          if ($process.ExitCode -ne 0) {
+            exit $process.ExitCode
+          }
+
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure --no-tests=error
 

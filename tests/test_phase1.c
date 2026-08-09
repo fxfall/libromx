@@ -16,6 +16,18 @@ typedef struct virtual_io {
 } virtual_io_t;
 
 static int failures = 0;
+static int trace_enabled = -1;
+
+static void trace_test(const char *name)
+{
+    if (trace_enabled < 0) {
+        trace_enabled = getenv("ROMX_TEST_TRACE") != NULL;
+    }
+    if (trace_enabled) {
+        fprintf(stderr, "[phase1] %s\n", name);
+        fflush(stderr);
+    }
+}
 
 #define CHECK(condition) do { \
     if (!(condition)) { \
@@ -310,9 +322,11 @@ static void test_path_is_not_identity(void)
     romx_reader_t *reader = NULL;
     romx_error_t error;
 
+    trace_test("path: before fopen");
     memset(file, 0, sizeof(file));
     make_footer(file + 4U, 0U, 4U, 0U, 0U, 0U, 0U, 0U);
     output = fopen(path, "wb");
+    trace_test("path: after fopen");
     CHECK(output != NULL);
     if (output == NULL) {
         return;
@@ -320,8 +334,11 @@ static void test_path_is_not_identity(void)
     CHECK(fwrite(file, 1U, sizeof(file), output) == sizeof(file));
     CHECK(fclose(output) == 0);
 
+    trace_test("path: before reader_open_path");
     CHECK(romx_reader_open_path(path, NULL, &reader, &error) == ROMX_OK);
+    trace_test("path: after reader_open_path");
     romx_reader_close(reader);
+    trace_test("path: after reader_close");
     CHECK(remove(path) == 0);
 }
 
@@ -356,14 +373,23 @@ static void test_argument_validation(void)
 
 int main(void)
 {
+    trace_test("before test_valid_canonical");
     test_valid_canonical();
+    trace_test("before test_valid_reordered_and_empty_offsets");
     test_valid_reordered_and_empty_offsets();
+    trace_test("before test_identity_and_fixed_fields");
     test_identity_and_fixed_fields();
+    trace_test("before test_flags");
     test_flags();
+    trace_test("before test_ranges_and_overlap");
     test_ranges_and_overlap();
+    trace_test("before test_truncation");
     test_truncation();
+    trace_test("before test_logical_file_larger_than_4_gib");
     test_logical_file_larger_than_4_gib();
+    trace_test("before test_path_is_not_identity");
     test_path_is_not_identity();
+    trace_test("before test_argument_validation");
     test_argument_validation();
 
     if (failures != 0) {
