@@ -50,12 +50,20 @@ static romx_result_t romx_file_read_at(void *user_data, uint64_t offset,
     *bytes_read = 0U;
     while (*bytes_read < size) {
         OVERLAPPED overlapped;
+        HANDLE event;
         DWORD actual = 0U;
         DWORD count = (DWORD)((size - *bytes_read) > UINT32_MAX ? UINT32_MAX : size - *bytes_read);
         uint64_t position = offset + *bytes_read;
         memset(&overlapped, 0, sizeof(overlapped));
         overlapped.Offset = (DWORD)position;
         overlapped.OffsetHigh = (DWORD)(position >> 32);
+        event = CreateEventW(NULL, TRUE, FALSE, NULL);
+        if (event == NULL) {
+            DWORD code = GetLastError();
+            return romx_error_set(error, ROMX_E_IO, (int32_t)code,
+                position, "failed to create file read event");
+        }
+        overlapped.hEvent = event;
         if (!ReadFile(state->handle, output + (size_t)*bytes_read, count, &actual, &overlapped)) {
             DWORD code = GetLastError();
             if (code == ERROR_IO_PENDING) {
@@ -63,10 +71,17 @@ static romx_result_t romx_file_read_at(void *user_data, uint64_t offset,
                     code = GetLastError();
                 else code = ERROR_SUCCESS;
             }
-            if (code == ERROR_HANDLE_EOF) return ROMX_OK;
-            if (code != ERROR_SUCCESS) return romx_error_set(error, ROMX_E_IO,
-                (int32_t)code, position, "failed to read ROMX file");
+            if (code == ERROR_HANDLE_EOF) {
+                CloseHandle(event);
+                return ROMX_OK;
+            }
+            if (code != ERROR_SUCCESS) {
+                CloseHandle(event);
+                return romx_error_set(error, ROMX_E_IO,
+                    (int32_t)code, position, "failed to read ROMX file");
+            }
         }
+        CloseHandle(event);
         *bytes_read += actual;
         if (actual != count) break;
     }
