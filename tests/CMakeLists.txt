@@ -125,6 +125,20 @@ else()
     target_compile_options(romx_phase8_cpp_tests PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 endif()
 
+if(MSVC)
+    # The test programs intentionally use the portable stdio API for fixture
+    # files. Keep the CRT deprecation warning local to test targets instead of
+    # weakening warnings for the library itself.
+    foreach(target
+        romx_phase1_tests romx_phase2_tests romx_phase3_tests
+        romx_phase4_tests romx_phase5_tests romx_conformance_tests
+        romx_writer_conformance_tests romx_phase6_tests romx_phase7_tests
+        romx_phase8_tests romx_phase8_cpp_tests)
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endforeach()
+    target_compile_options(romx_phase8_cpp_tests PRIVATE /EHsc)
+endif()
+
 add_test(NAME romx.phase6 COMMAND romx_phase6_tests)
 add_test(NAME romx.phase7 COMMAND romx_phase7_tests)
 add_test(NAME romx.phase8 COMMAND romx_phase8_tests)
