@@ -13,6 +13,7 @@
 #if defined(_WIN32)
 #include <fcntl.h>
 #include <io.h>
+#include <share.h>
 #include <sys/stat.h>
 #include <windows.h>
 #else
@@ -282,9 +283,15 @@ static romx_result_t create_temporary(const char *destination,
                 errno = EINVAL;
                 break;
             }
-            descriptor = _wopen(wide,
-                _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY,
-                _S_IREAD | _S_IWRITE);
+            {
+                int open_error = _wsopen_s(&descriptor, wide,
+                    _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY,
+                    _SH_DENYNO, _S_IREAD | _S_IWRITE);
+                if (open_error != 0) {
+                    descriptor = -1;
+                    errno = open_error;
+                }
+            }
             free(wide);
             if (descriptor >= 0 || errno != EEXIST) {
                 break;

@@ -14,6 +14,7 @@
 #include <direct.h>
 #include <fcntl.h>
 #include <io.h>
+#include <share.h>
 #include <sys/stat.h>
 #include <windows.h>
 #else
@@ -103,8 +104,15 @@ static romx_result_t write_region_temp(const romx_reader_t *reader,
             (void)snprintf(suffix, 8U, "%06u", attempt);
             wchar_t *wide = to_wide(temporary);
             if (wide == NULL) { descriptor = -1; errno = EINVAL; break; }
-            descriptor = _wopen(wide, _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY,
-                _S_IREAD | _S_IWRITE);
+            {
+                int open_error = _wsopen_s(&descriptor, wide,
+                    _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY,
+                    _SH_DENYNO, _S_IREAD | _S_IWRITE);
+                if (open_error != 0) {
+                    descriptor = -1;
+                    errno = open_error;
+                }
+            }
             free(wide);
             if (descriptor >= 0 || errno != EEXIST) break;
         }
@@ -253,7 +261,12 @@ static int existing_file_matches(const char *path, uint64_t expected_size,
     uint8_t digest[32];
     uint64_t size = 0U;
 #if defined(_WIN32)
-    { wchar_t *wide=to_wide(path); if(wide==NULL)return 0; file=_wfopen(wide,L"rb");free(wide); }
+    {
+        wchar_t *wide = to_wide(path);
+        if (wide == NULL) return 0;
+        if (_wfopen_s(&file, wide, L"rb") != 0) file = NULL;
+        free(wide);
+    }
 #else
     file = fopen(path, "rb");
 #endif
