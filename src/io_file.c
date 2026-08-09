@@ -12,7 +12,12 @@
 #if defined(_WIN32)
 #include <windows.h>
 
-typedef struct romx_file_io { HANDLE handle; uint64_t size; } romx_file_io_t;
+typedef struct romx_file_io {
+    HANDLE handle;
+    uint64_t size;
+    CRITICAL_SECTION lock;
+    int lock_initialized;
+} romx_file_io_t;
 
 static wchar_t *romx_utf8_to_wide(const char *path)
 {
@@ -30,7 +35,11 @@ static wchar_t *romx_utf8_to_wide(const char *path)
 static void romx_file_close(void *user_data)
 {
     romx_file_io_t *state = (romx_file_io_t *)user_data;
-    if (state != NULL) { if (state->handle != INVALID_HANDLE_VALUE) CloseHandle(state->handle); free(state); }
+    if (state != NULL) {
+        if (state->lock_initialized) DeleteCriticalSection(&state->lock);
+        if (state->handle != INVALID_HANDLE_VALUE) CloseHandle(state->handle);
+        free(state);
+    }
 }
 
 static romx_result_t romx_file_get_size(void *user_data, uint64_t *size, romx_error_t *error)
@@ -49,39 +58,28 @@ static romx_result_t romx_file_read_at(void *user_data, uint64_t offset,
     uint8_t *output = (uint8_t *)buffer;
     *bytes_read = 0U;
     while (*bytes_read < size) {
-        OVERLAPPED overlapped;
-        HANDLE event;
+        LARGE_INTEGER position;
         DWORD actual = 0U;
         DWORD count = (DWORD)((size - *bytes_read) > UINT32_MAX ? UINT32_MAX : size - *bytes_read);
-        uint64_t position = offset + *bytes_read;
-        memset(&overlapped, 0, sizeof(overlapped));
-        overlapped.Offset = (DWORD)position;
-        overlapped.OffsetHigh = (DWORD)(position >> 32);
-        event = CreateEventW(NULL, TRUE, FALSE, NULL);
-        if (event == NULL) {
-            DWORD code = GetLastError();
-            return romx_error_set(error, ROMX_E_IO, (int32_t)code,
-                position, "failed to create file read event");
+        uint64_t byte_offset = offset + *bytes_read;
+        DWORD code = ERROR_SUCCESS;
+
+        position.QuadPart = (LONGLONG)byte_offset;
+        EnterCriticalSection(&state->lock);
+        if (!SetFilePointerEx(state->handle, position, NULL, FILE_BEGIN)) {
+            code = GetLastError();
+        } else if (!ReadFile(state->handle,
+                output + (size_t)*bytes_read, count, &actual, NULL)) {
+            code = GetLastError();
         }
-        overlapped.hEvent = event;
-        if (!ReadFile(state->handle, output + (size_t)*bytes_read, count, &actual, &overlapped)) {
-            DWORD code = GetLastError();
-            if (code == ERROR_IO_PENDING) {
-                if (!GetOverlappedResult(state->handle, &overlapped, &actual, TRUE))
-                    code = GetLastError();
-                else code = ERROR_SUCCESS;
-            }
+        LeaveCriticalSection(&state->lock);
+        if (code != ERROR_SUCCESS) {
             if (code == ERROR_HANDLE_EOF) {
-                CloseHandle(event);
                 return ROMX_OK;
             }
-            if (code != ERROR_SUCCESS) {
-                CloseHandle(event);
-                return romx_error_set(error, ROMX_E_IO,
-                    (int32_t)code, position, "failed to read ROMX file");
-            }
+            return romx_error_set(error, ROMX_E_IO,
+                (int32_t)code, byte_offset, "failed to read ROMX file");
         }
-        CloseHandle(event);
         *bytes_read += actual;
         if (actual != count) break;
     }
@@ -161,8 +159,7 @@ romx_result_t romx_reader_open_path(const char *utf8_path,
             ROMX_E_INVALID_ARGUMENT, (int32_t)GetLastError(), ROMX_OFFSET_UNKNOWN,
             "path is not valid UTF-8"); }
         state->handle = CreateFileW(wide, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS |
-            FILE_FLAG_OVERLAPPED, NULL);
+            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, NULL);
         free(wide);
         if (state->handle == INVALID_HANDLE_VALUE || !GetFileSizeEx(state->handle, &size)) {
             DWORD code = GetLastError(); romx_file_close(state);
@@ -170,6 +167,8 @@ romx_result_t romx_reader_open_path(const char *utf8_path,
                 ROMX_OFFSET_UNKNOWN, "failed to open or size ROMX file");
         }
         state->size = (uint64_t)size.QuadPart;
+        InitializeCriticalSection(&state->lock);
+        state->lock_initialized = 1;
     }
 #else
     {
