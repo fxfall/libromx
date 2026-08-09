@@ -111,14 +111,14 @@ int main(int argc, char **argv)
 {
     static const uint8_t payload_bytes[] = { 'a', 'b', 'c' };
     static const char writer_metadata[] =
-        "{\"schema_version\":\"1.0\",\"name\":\"ROMX writer golden\","
+        "{\"schema_version\":\"0.1.0\",\"name\":\"ROMX writer golden\","
         "\"platform\":\"gb\",\"payload_format\":\"gb\"}";
     static const char origin_metadata[] =
-        "{\"schema_version\":\"1.0\",\"name\":\"ROMX writer golden\","
+        "{\"schema_version\":\"0.1.0\",\"name\":\"ROMX writer golden\","
         "\"platform\":\"gb\",\"payload_format\":\"gb\","
         "\"origin_crc32\":\"00000000\"}";
     static const char body_metadata[] =
-        "{\"schema_version\":\"1.0\","
+        "{\"schema_version\":\"0.1.0\","
         "\"name\":\"ROMX body SHA-256 golden\",\"platform\":\"gb\","
         "\"payload_format\":\"gb\"}";
     static const writer_case_t cases[] = {

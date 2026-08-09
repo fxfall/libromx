@@ -25,7 +25,7 @@ static void le64(uint8_t*p,uint64_t v){unsigned i;for(i=0U;i<8U;++i)p[i]=(uint8_
 
 static int write_container(const char *path,int corrupt)
 {
-    static const char metadata[]="{\"schema_version\":\"1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
+    static const char metadata[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
     uint8_t footer[128]={0};FILE*f=fopen(path,"wb");if(!f)return 0;
     memcpy(footer,"ROMX",4U);le32(footer+4U,1U);le64(footer+8U,0U);le64(footer+16U,3U);le64(footer+24U,3U);le64(footer+32U,sizeof(metadata)-1U);le32(footer+0x58U,ROMX_FLAG_HAS_METADATA|(corrupt?ROMX_FLAG_HAS_BODY_SHA256:0U));le32(footer+0x5cU,128U);
     if(fwrite(corrupt?"axc":"abc",1U,3U,f)!=3U||fwrite(metadata,1U,sizeof(metadata)-1U,f)!=sizeof(metadata)-1U||fwrite(footer,1U,sizeof(footer),f)!=sizeof(footer)){fclose(f);return 0;}return fclose(f)==0;

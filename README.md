@@ -1,15 +1,15 @@
 # libromx
 
 `libromx` is an independent, reusable C99 library for the stable, frozen ROMX
-1.0 container format. Its public ABI does not expose C++ STL types and does not depend on an
+0.1.0 container format. Its public ABI does not expose C++ STL types and does not depend on an
 emulator, frontend, GUI, database, or RetroArch playlist.
 
 **Release status: libromx 0.1.0 complete.** This release targets only the
-stable, frozen ROMX 1.0 specification and its frozen reader/writer corpora.
+stable, frozen ROMX 0.1.0 specification and its frozen reader/writer corpora.
 
 The project currently implements phases 1 through 8:
 
-- ROMX 1.0 footer discovery at end of file;
+- ROMX 0.1.0 footer discovery at end of file;
 - UTF-8 path and callback-based input;
 - explicit little-endian decoding;
 - 64-bit offsets and sizes;
@@ -32,7 +32,7 @@ The project currently implements phases 1 through 8:
 
 Image conversion remains intentionally outside the core library.
 
-ROMX 1.0 compatibility changes are limited to new conformance fixtures or
+ROMX 0.1.0 compatibility changes are limited to new conformance fixtures or
 clarifying text that does not change byte semantics. Footer layout, field
 meaning, or binary-validity changes require a new ROMX format version.
 Metadata schema versions evolve independently; an unsupported metadata schema

@@ -269,7 +269,7 @@ static int valid_schema(const romx_json_document_t *json, int require_crc32)
         }
 
         if (romx_json_string_equals(json, key, "schema_version")) {
-            valid = romx_json_string_equals(json, value, "1.0");
+            valid = romx_json_string_equals(json, value, "0.1.0");
             required_schema = valid;
         } else if (romx_json_string_equals(json, key, "name")) {
             valid = string_length_between(json, value, 1U, 512U);
@@ -408,7 +408,7 @@ romx_result_t romx_metadata_load_internal(
         romx_metadata_close(metadata);
         return romx_error_set(error, ROMX_E_METADATA_SCHEMA, 0,
             reader->info.metadata.offset,
-            "metadata does not conform to ROMX schema 1.0");
+            "metadata does not conform to ROMX schema 0.1.0");
     }
 
     *out_metadata = metadata;
@@ -501,7 +501,7 @@ romx_result_t romx_prepare_metadata(const uint8_t *input, size_t input_size,
     if (!valid_schema(&json, 0)) {
         romx_json_destroy(&json);
         return romx_error_set(error, ROMX_E_METADATA_SCHEMA, 0,
-            UINT64_C(0), "metadata template does not conform to ROMX schema 1.0");
+            UINT64_C(0), "metadata template does not conform to ROMX schema 0.1.0");
     }
 
     format_crc32(payload_crc32, payload_crc);
@@ -622,7 +622,7 @@ romx_result_t romx_prepare_metadata(const uint8_t *input, size_t input_size,
         romx_json_destroy(&json);
         free(prepared);
         return romx_error_set(error, ROMX_E_METADATA_SCHEMA, 0,
-            (uint64_t)bad_offset, "generated metadata is not valid ROMX 1.0 metadata");
+            (uint64_t)bad_offset, "generated metadata is not valid ROMX 0.1.0 metadata");
     }
     romx_json_destroy(&json);
     *output = prepared;

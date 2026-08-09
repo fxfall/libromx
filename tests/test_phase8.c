@@ -34,7 +34,7 @@ static void test_path_and_concurrent_writers(void)
     char directory[]="/tmp/libromx-phase8-XXXXXX",payload_path[512],metadata_path[512],output[512];CHECK(mkdtemp(directory)!=NULL);(void)snprintf(payload_path,sizeof(payload_path),"%s/input.gb",directory);(void)snprintf(metadata_path,sizeof(metadata_path),"%s/metadata.json",directory);(void)snprintf(output,sizeof(output),"%s/output.romx",directory);
 #endif
     {
-        static const char metadata[]="{\"schema_version\":\"1.0\",\"name\":\"Path writer\",\"platform\":\"gb\",\"payload_format\":\"gb\"}";
+        static const char metadata[]="{\"schema_version\":\"0.1.0\",\"name\":\"Path writer\",\"platform\":\"gb\",\"payload_format\":\"gb\"}";
         romx_reader_t*reader=NULL;romx_validation_report_t report=ROMX_VALIDATION_REPORT_INIT;romx_error_t error;
         CHECK(write_bytes(payload_path,"abc",3U));CHECK(write_bytes(metadata_path,metadata,sizeof(metadata)-1U));
 #if !defined(_WIN32)

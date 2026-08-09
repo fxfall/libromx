@@ -1,6 +1,6 @@
 # Phases 6 through 8
 
-These phases implement the ROMX 1.0 writer and its integration surface. The
+These phases implement the ROMX 0.1.0 writer and its integration surface. The
 frozen standard repository is the only compatibility target.
 
 ## Phase 6: streaming container writer
@@ -19,7 +19,7 @@ frozen standard repository is the only compatibility target.
 
 - Parse metadata templates as strict RFC 8259 UTF-8 JSON without BOM; reject
   duplicate keys at every object level.
-- Reject every top-level field outside the frozen ROMX 1.0 schema.
+- Reject every top-level field outside the frozen ROMX 0.1.0 schema.
 - Generate metadata `crc32` from the exact payload by default.
 - Accept an explicit lookup CRC32 override and canonicalize it to lowercase.
 - When `origin_crc32` is present, regenerate it from the exact payload and

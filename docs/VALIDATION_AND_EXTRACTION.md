@@ -1,28 +1,28 @@
 # Validation and extraction
 
-Opening a reader validates the ROMX 1.0 footer and region structure. It checks
+Opening a reader validates the ROMX 0.1.0 footer and region structure. It checks
 the magic, version, footer size, flags, optional-region size agreement, range
 overflow, bounds, overlap, complete coverage of every byte before the footer,
 and the rule that a disabled body SHA-256 field is all zero. When an optional
 region size is zero, its offset is ignored. The 32 bytes at footer offset
-`0x38` are reserved in ROMX 1.0 and are never interpreted as a payload hash.
+`0x38` are reserved in ROMX 0.1.0 and are never interpreted as a payload hash.
 
 Use `romx_reader_validate` for streaming component checks.
 `ROMX_VALIDATE_ALL` reports:
 
 - `payload_hashes`: the library calculated the exact payload CRC32 and derived
-  SHA-256. ROMX 1.0 stores no payload SHA-256 and does not authenticate one.
+  SHA-256. ROMX 0.1.0 stores no payload SHA-256 and does not authenticate one.
 - `body_sha256`: the SHA-256 of every byte before the footer when
   `ROMX_FLAG_HAS_BODY_SHA256` is enabled, otherwise `ROMX_STATUS_ABSENT`.
 - `metadata`: strict UTF-8 without BOM, RFC 8259 JSON, duplicate-key rejection
-  at every object level, and the frozen ROMX 1.0 schema (including the closed
+  at every object level, and the frozen ROMX 0.1.0 schema (including the closed
   `cover` object properties).
 - `cover`: structural PNG profile validation including signature, limits, IHDR
   first/unique rules, legal color/depth combinations, IDAT/PLTE ordering,
   chunk bounds, critical chunks, final IEND, and chunk CRCs. Pixels are not
   decoded.
 - `cover_hashes`: a derived SHA-256 for API compatibility only; no cover hash
-  is stored in metadata or required by ROMX 1.0.
+  is stored in metadata or required by ROMX 0.1.0.
 
 Malformed optional metadata or cover data is recorded as
 `ROMX_STATUS_INVALID` but does not make the top-level validation call fail.

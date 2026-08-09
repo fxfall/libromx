@@ -39,7 +39,7 @@ romx_result_t romx_reader_validate(
         if (result != ROMX_OK) {
             return result;
         }
-        /* These are derived values. ROMX 1.0 has no payload hash in its footer. */
+        /* These are derived values. ROMX 0.1.0 has no payload hash in its footer. */
         report->payload_hashes = ROMX_STATUS_VALID;
     }
 

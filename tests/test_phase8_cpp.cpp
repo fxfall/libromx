@@ -17,7 +17,7 @@ int main()
         }
         {
             std::ofstream stream(metadata.c_str(), std::ios::binary);
-            stream << "{\"schema_version\":\"1.0\",\"name\":\"C++\","
+            stream << "{\"schema_version\":\"0.1.0\",\"name\":\"C++\","
                       "\"platform\":\"gb\",\"payload_format\":\"gb\"}";
         }
         romx_writer_options_t options = ROMX_WRITER_OPTIONS_INIT;

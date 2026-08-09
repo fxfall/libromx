@@ -10,7 +10,7 @@ option(ROMX_BUILD_TESTS "Build libromx tests" ${BUILD_TESTING})
 option(ROMX_BUILD_EXAMPLES "Build libromx C and C++ examples" OFF)
 set(ROMX_CONFORMANCE_FIXTURE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../romx/tests/fixtures"
-    CACHE PATH "Path to the frozen ROMX 1.0 conformance fixtures")
+    CACHE PATH "Path to the frozen ROMX 0.1.0 conformance fixtures")
 
 add_library(romx
     src/crc32.c

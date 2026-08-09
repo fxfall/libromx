@@ -53,7 +53,7 @@ const char *romx_result_string(romx_result_t result)
     case ROMX_E_METADATA_TOO_LARGE: return "ROMX metadata exceeds the limit";
     case ROMX_E_METADATA_UTF8: return "ROMX metadata is not valid UTF-8";
     case ROMX_E_METADATA_JSON: return "ROMX metadata is not valid JSON";
-    case ROMX_E_METADATA_SCHEMA: return "ROMX metadata does not match schema 1.0";
+    case ROMX_E_METADATA_SCHEMA: return "ROMX metadata does not match schema 0.1.0";
     case ROMX_E_COVER_ABSENT: return "ROMX cover is absent";
     case ROMX_E_COVER_TOO_LARGE: return "ROMX cover exceeds the limit";
     case ROMX_E_COVER_PNG: return "ROMX cover is not a valid PNG";

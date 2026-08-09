@@ -66,7 +66,7 @@ static romx_reader_t *open_file(uint8_t *file, uint64_t size)
     return reader;
 }
 
-static void make_abc_file(uint8_t file[3U + ROMX_FOOTER_SIZE_V1])
+static void make_abc_file(uint8_t file[3U + ROMX_FOOTER_SIZE_0_1_0])
 {
     static const uint8_t sha256_abc[32] = {
         0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,
@@ -76,20 +76,20 @@ static void make_abc_file(uint8_t file[3U + ROMX_FOOTER_SIZE_V1])
     };
     uint8_t *footer = file + 3U;
     memcpy(file, "abc", 3U);
-    memset(footer, 0, ROMX_FOOTER_SIZE_V1);
+    memset(footer, 0, ROMX_FOOTER_SIZE_0_1_0);
     memcpy(footer, "ROMX", 4U);
     le32(footer + 4U, 1U);
     le64(footer + 8U, 0U);
     le64(footer + 16U, 3U);
     memset(footer + 0x38U, 0xa5, 32U);
     le32(footer + 0x58U, ROMX_FLAG_HAS_BODY_SHA256);
-    le32(footer + 0x5cU, ROMX_FOOTER_SIZE_V1);
+    le32(footer + 0x5cU, ROMX_FOOTER_SIZE_0_1_0);
     memcpy(footer + 0x60U, sha256_abc, 32U);
 }
 
 static void test_known_hashes(void)
 {
-    uint8_t file[3U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[3U + ROMX_FOOTER_SIZE_0_1_0];
     romx_reader_t *reader;
     romx_validation_report_t report = ROMX_VALIDATION_REPORT_INIT;
     romx_error_t error;
@@ -106,7 +106,7 @@ static void test_known_hashes(void)
 
 static void test_hash_mismatch_and_region_read(void)
 {
-    uint8_t file[3U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[3U + ROMX_FOOTER_SIZE_0_1_0];
     uint8_t output[4] = {0};
     uint64_t read = 0U;
     romx_reader_t *reader;

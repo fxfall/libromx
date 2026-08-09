@@ -22,13 +22,13 @@
 extern "C" {
 #endif
 
-#define ROMX_FORMAT_VERSION_1 UINT32_C(1)
-#define ROMX_FOOTER_SIZE_V1 UINT32_C(128)
+#define ROMX_FORMAT_VERSION_0_1_0 UINT32_C(1)
+#define ROMX_FOOTER_SIZE_0_1_0 UINT32_C(128)
 
 #define ROMX_FLAG_HAS_METADATA UINT32_C(0x00000001)
 #define ROMX_FLAG_HAS_COVER UINT32_C(0x00000002)
 #define ROMX_FLAG_HAS_BODY_SHA256 UINT32_C(0x00000004)
-#define ROMX_FLAGS_V1_MASK UINT32_C(0x00000007)
+#define ROMX_FLAGS_0_1_0_MASK UINT32_C(0x00000007)
 
 #define ROMX_ERROR_MESSAGE_CAPACITY 256
 #define ROMX_OFFSET_UNKNOWN UINT64_MAX
@@ -169,7 +169,7 @@ typedef struct romx_validation_report {
     romx_result_t cover_result;
     romx_crc32_status_t metadata_crc32;
     uint32_t computed_payload_crc32;
-    uint8_t computed_payload_sha256[32]; /* derived only; never a ROMX 1.0 field */
+    uint8_t computed_payload_sha256[32]; /* derived only; never a ROMX 0.1.0 field */
     uint8_t computed_body_sha256[32];
     uint8_t computed_cover_sha256[32]; /* derived only; never metadata */
     uint32_t cover_width;

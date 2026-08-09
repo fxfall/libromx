@@ -11,7 +11,7 @@ typedef struct memory_io {
 } memory_io_t;
 
 typedef struct virtual_io {
-    uint8_t footer[ROMX_FOOTER_SIZE_V1];
+    uint8_t footer[ROMX_FOOTER_SIZE_0_1_0];
     uint64_t size;
 } virtual_io_t;
 
@@ -51,9 +51,9 @@ static void make_footer(
     uint64_t cover_size,
     uint32_t flags)
 {
-    memset(footer, 0, ROMX_FOOTER_SIZE_V1);
+    memset(footer, 0, ROMX_FOOTER_SIZE_0_1_0);
     memcpy(footer, "ROMX", 4U);
-    write_le32(footer + 0x04U, ROMX_FORMAT_VERSION_1);
+    write_le32(footer + 0x04U, ROMX_FORMAT_VERSION_0_1_0);
     write_le64(footer + 0x08U, rom_offset);
     write_le64(footer + 0x10U, rom_size);
     write_le64(footer + 0x18U, metadata_offset);
@@ -61,7 +61,7 @@ static void make_footer(
     write_le64(footer + 0x28U, cover_offset);
     write_le64(footer + 0x30U, cover_size);
     write_le32(footer + 0x58U, flags);
-    write_le32(footer + 0x5CU, ROMX_FOOTER_SIZE_V1);
+    write_le32(footer + 0x5CU, ROMX_FOOTER_SIZE_0_1_0);
 }
 
 static romx_result_t memory_get_size(
@@ -135,13 +135,13 @@ static romx_result_t virtual_read_at(
 {
     virtual_io_t *virtual_file = (virtual_io_t *)user_data;
     (void)error;
-    if (offset != virtual_file->size - ROMX_FOOTER_SIZE_V1 ||
-        size != ROMX_FOOTER_SIZE_V1) {
+    if (offset != virtual_file->size - ROMX_FOOTER_SIZE_0_1_0 ||
+        size != ROMX_FOOTER_SIZE_0_1_0) {
         *bytes_read = UINT64_C(0);
         return ROMX_E_IO;
     }
-    memcpy(buffer, virtual_file->footer, ROMX_FOOTER_SIZE_V1);
-    *bytes_read = ROMX_FOOTER_SIZE_V1;
+    memcpy(buffer, virtual_file->footer, ROMX_FOOTER_SIZE_0_1_0);
+    *bytes_read = ROMX_FOOTER_SIZE_0_1_0;
     return ROMX_OK;
 }
 
@@ -160,7 +160,7 @@ static void expect_result(memory_io_t *memory, romx_result_t expected)
 
 static void test_valid_canonical(void)
 {
-    uint8_t file[160U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[160U + ROMX_FOOTER_SIZE_0_1_0];
     memory_io_t memory = { file, sizeof(file), 0 };
     romx_reader_t *reader = NULL;
     romx_error_t error;
@@ -174,7 +174,7 @@ static void test_valid_canonical(void)
     CHECK(open_memory(&memory, &reader, &error) == ROMX_OK);
     CHECK(reader != NULL);
     CHECK(romx_reader_get_info(reader, &info, &error) == ROMX_OK);
-    CHECK(info.version == ROMX_FORMAT_VERSION_1);
+    CHECK(info.version == ROMX_FORMAT_VERSION_0_1_0);
     CHECK(info.file_size == sizeof(file));
     CHECK(info.body_size == 160U);
     CHECK(info.rom.offset == 0U && info.rom.size == 100U);
@@ -186,7 +186,7 @@ static void test_valid_canonical(void)
 
 static void test_valid_reordered_and_empty_offsets(void)
 {
-    uint8_t file[64U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[64U + ROMX_FOOTER_SIZE_0_1_0];
     memory_io_t memory = { file, sizeof(file), 0 };
 
     memset(file, 0, sizeof(file));
@@ -199,7 +199,7 @@ static void test_valid_reordered_and_empty_offsets(void)
 
 static void test_identity_and_fixed_fields(void)
 {
-    uint8_t file[16U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[16U + ROMX_FOOTER_SIZE_0_1_0];
     memory_io_t memory = { file, sizeof(file), 0 };
     uint8_t *footer = file + 16U;
 
@@ -212,7 +212,7 @@ static void test_identity_and_fixed_fields(void)
 
     write_le32(footer + 0x04U, 2U);
     expect_result(&memory, ROMX_E_INVALID_FOOTER);
-    write_le32(footer + 0x04U, ROMX_FORMAT_VERSION_1);
+    write_le32(footer + 0x04U, ROMX_FORMAT_VERSION_0_1_0);
 
     write_le32(footer + 0x5CU, 64U);
     expect_result(&memory, ROMX_E_INVALID_FOOTER);
@@ -220,7 +220,7 @@ static void test_identity_and_fixed_fields(void)
 
 static void test_flags(void)
 {
-    uint8_t file[32U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[32U + ROMX_FOOTER_SIZE_0_1_0];
     memory_io_t memory = { file, sizeof(file), 0 };
     uint8_t *footer = file + 32U;
 
@@ -238,7 +238,7 @@ static void test_flags(void)
 
 static void test_ranges_and_overlap(void)
 {
-    uint8_t file[64U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[64U + ROMX_FOOTER_SIZE_0_1_0];
     memory_io_t memory = { file, sizeof(file), 0 };
     uint8_t *footer = file + 64U;
 
@@ -264,7 +264,7 @@ static void test_ranges_and_overlap(void)
 static void test_truncation(void)
 {
     uint8_t short_file[127U];
-    uint8_t file[1U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[1U + ROMX_FOOTER_SIZE_0_1_0];
     memory_io_t short_memory = { short_file, sizeof(short_file), 0 };
     memory_io_t partial_memory = { file, sizeof(file), 1 };
 
@@ -286,7 +286,7 @@ static void test_logical_file_larger_than_4_gib(void)
     const uint64_t body_size = UINT64_C(0x100000000) + UINT64_C(4096);
 
     memset(&virtual_file, 0, sizeof(virtual_file));
-    virtual_file.size = body_size + ROMX_FOOTER_SIZE_V1;
+    virtual_file.size = body_size + ROMX_FOOTER_SIZE_0_1_0;
     make_footer(virtual_file.footer,
         UINT64_C(0), body_size,
         0U, 0U, 0U, 0U, 0U);
@@ -304,7 +304,7 @@ static void test_logical_file_larger_than_4_gib(void)
 
 static void test_path_is_not_identity(void)
 {
-    uint8_t file[4U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[4U + ROMX_FOOTER_SIZE_0_1_0];
     const char *path = "romx-phase1-valid.txt";
     FILE *output;
     romx_reader_t *reader = NULL;
@@ -327,7 +327,7 @@ static void test_path_is_not_identity(void)
 
 static void test_argument_validation(void)
 {
-    uint8_t file[1U + ROMX_FOOTER_SIZE_V1];
+    uint8_t file[1U + ROMX_FOOTER_SIZE_0_1_0];
     memory_io_t memory = { file, sizeof(file), 0 };
     romx_error_t error;
     romx_info_t info = ROMX_INFO_INIT;

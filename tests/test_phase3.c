@@ -18,7 +18,7 @@ static uint8_t *make_file(const uint8_t *metadata, size_t metadata_size, uint64_
     static const uint8_t sha_abc[32]={0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,0x41,0x41,0x40,0xde,0x5d,0xae,0x22,0x23,0xb0,0x03,0x61,0xa3,0x96,0x17,0x7a,0x9c,0xb4,0x10,0xff,0x61,0xf2,0x00,0x15,0xad};
     uint8_t *file;
     uint8_t *footer;
-    *file_size=3U+(uint64_t)metadata_size+ROMX_FOOTER_SIZE_V1;
+    *file_size=3U+(uint64_t)metadata_size+ROMX_FOOTER_SIZE_0_1_0;
     file=(uint8_t*)calloc(1U,(size_t)*file_size);
     memcpy(file,"abc",3U); memcpy(file+3U,metadata,metadata_size);
     footer=file+3U+metadata_size; memcpy(footer,"ROMX",4U); le32(footer+4U,1U);
@@ -36,7 +36,7 @@ static romx_reader_t *open_memory(uint8_t *file,uint64_t size,const romx_reader_
 
 static void test_valid_metadata(void)
 {
-    static const uint8_t json[]="{\"schema_version\":\"1.0\",\"name\":\"A\\u4e2d\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\",\"genre\":[\"one\",\"two\"],\"coop\":true}";
+    static const uint8_t json[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\\u4e2d\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\",\"genre\":[\"one\",\"two\"],\"coop\":true}";
     uint64_t size; uint8_t *file=make_file(json,sizeof(json)-1U,&size); memory_io_t memory;
     romx_reader_t *reader=open_memory(file,size,NULL,&memory); romx_metadata_t *metadata=NULL;
     romx_validation_report_t report=ROMX_VALIDATION_REPORT_INIT; romx_error_t error;
@@ -53,8 +53,8 @@ static void test_valid_metadata(void)
 
 static void test_crc_override_and_invalid_optional(void)
 {
-    static const char mismatch[]="{\"schema_version\":\"1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"00000000\"}";
-    static const char invalid[]="{\"schema_version\":\"1.0\",\"name\":\"A\",}";
+    static const char mismatch[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"00000000\"}";
+    static const char invalid[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\",}";
     const char *cases[2]={mismatch,invalid}; size_t i;
     for(i=0U;i<2U;++i){uint64_t size;uint8_t*file=make_file((const uint8_t*)cases[i],strlen(cases[i]),&size);memory_io_t memory;romx_reader_t*r=open_memory(file,size,NULL,&memory);romx_validation_report_t report=ROMX_VALIDATION_REPORT_INIT;romx_error_t error;romx_metadata_t*m=NULL;
         CHECK(romx_reader_validate(r,ROMX_VALIDATE_METADATA,&report,&error)==ROMX_OK);
@@ -65,11 +65,11 @@ static void test_crc_override_and_invalid_optional(void)
 
 static void test_schema_utf8_and_limit(void)
 {
-    static const char uppercase[]="{\"schema_version\":\"1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"ABCDEF12\"}";
-    static const char duplicate[]="{\"schema_version\":\"1.0\",\"name\":\"A\",\"name\":\"B\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
-    static const char escaped_duplicate[]="{\"schema_version\":\"1.0\",\"name\":\"A\",\"na\\u006de\":\"B\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
-    static const char nul_key[]="{\"schema_version\\u0000ignored\":\"1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
-    static const char nul_enum[]="{\"schema_version\":\"1.0\",\"name\":\"A\",\"platform\":\"gb\\u0000ignored\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
+    static const char uppercase[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"ABCDEF12\"}";
+    static const char duplicate[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\",\"name\":\"B\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
+    static const char escaped_duplicate[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\",\"na\\u006de\":\"B\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
+    static const char nul_key[]="{\"schema_version\\u0000ignored\":\"0.1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
+    static const char nul_enum[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\",\"platform\":\"gb\\u0000ignored\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
     const char *cases[5]={uppercase,duplicate,escaped_duplicate,nul_key,nul_enum};size_t i;
     for(i=0U;i<5U;++i){uint64_t size;uint8_t*file=make_file((const uint8_t*)cases[i],strlen(cases[i]),&size);memory_io_t memory;romx_reader_t*r=open_memory(file,size,NULL,&memory);romx_metadata_t*m=NULL;romx_error_t error;CHECK(romx_metadata_open(r,&m,&error)==ROMX_E_METADATA_SCHEMA);romx_reader_close(r);free(file);}
     {
@@ -77,16 +77,16 @@ static void test_schema_utf8_and_limit(void)
         uint64_t size;uint8_t*file=make_file(invalid_utf8,sizeof(invalid_utf8),&size);memory_io_t memory;romx_reader_t*r=open_memory(file,size,NULL,&memory);romx_metadata_t*m=NULL;romx_error_t error;CHECK(romx_metadata_open(r,&m,&error)==ROMX_E_METADATA_UTF8);romx_reader_close(r);free(file);
     }
     {
-        static const char minimal[]="{\"schema_version\":\"1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
+        static const char minimal[]="{\"schema_version\":\"0.1.0\",\"name\":\"A\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"352441c2\"}";
         uint64_t size;uint8_t*file=make_file((const uint8_t*)minimal,strlen(minimal),&size);memory_io_t memory;romx_reader_options_t options=ROMX_READER_OPTIONS_INIT;romx_reader_t*r;romx_metadata_t*m=NULL;romx_error_t error;options.max_metadata_size=8U;r=open_memory(file,size,&options,&memory);CHECK(romx_metadata_open(r,&m,&error)==ROMX_E_METADATA_TOO_LARGE);romx_reader_close(r);free(file);
     }
 }
 
 static void test_cgb_header_priority(void)
 {
-    static const char json[]="{\"schema_version\":\"1.0\",\"name\":\"CGB\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"00000000\"}";
+    static const char json[]="{\"schema_version\":\"0.1.0\",\"name\":\"CGB\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"00000000\"}";
     const size_t rom_size=0x144U,metadata_size=sizeof(json)-1U;
-    const uint64_t size=(uint64_t)rom_size+(uint64_t)metadata_size+ROMX_FOOTER_SIZE_V1;
+    const uint64_t size=(uint64_t)rom_size+(uint64_t)metadata_size+ROMX_FOOTER_SIZE_0_1_0;
     uint8_t*file=(uint8_t*)calloc(1U,(size_t)size);uint8_t*footer;
     memory_io_t memory;romx_reader_t*reader;romx_error_t error;
     char format[8];uint64_t required=0U;
@@ -95,7 +95,7 @@ static void test_cgb_header_priority(void)
     footer=file+rom_size+metadata_size;memcpy(footer,"ROMX",4U);le32(footer+4U,1U);
     le64(footer+8U,0U);le64(footer+16U,rom_size);le64(footer+24U,rom_size);
     le64(footer+32U,metadata_size);le32(footer+0x58U,ROMX_FLAG_HAS_METADATA);
-    le32(footer+0x5cU,ROMX_FOOTER_SIZE_V1);
+    le32(footer+0x5cU,ROMX_FOOTER_SIZE_0_1_0);
     reader=open_memory(file,size,NULL,&memory);
     CHECK(romx_reader_get_payload_format(reader,format,sizeof(format),&required,&error)==ROMX_OK);
     CHECK(strcmp(format,"gbc")==0);

@@ -82,7 +82,7 @@ static int romx_bytes_are_zero(const uint8_t *bytes, size_t size)
 }
 
 romx_result_t romx_parse_footer(
-    const uint8_t footer[ROMX_FOOTER_SIZE_V1],
+    const uint8_t footer[ROMX_FOOTER_SIZE_0_1_0],
     uint64_t file_size,
     romx_info_t *info,
     romx_error_t *error)
@@ -94,12 +94,12 @@ romx_result_t romx_parse_footer(
         return romx_error_set(error, ROMX_E_INVALID_ARGUMENT, 0,
             ROMX_OFFSET_UNKNOWN, "footer and info must not be null");
     }
-    if (file_size < ROMX_FOOTER_SIZE_V1) {
+    if (file_size < ROMX_FOOTER_SIZE_0_1_0) {
         return romx_error_set(error, ROMX_E_TRUNCATED, 0, file_size,
-            "file is shorter than the ROMX 1.0 footer");
+            "file is shorter than the ROMX 0.1.0 footer");
     }
 
-    footer_offset = file_size - ROMX_FOOTER_SIZE_V1;
+    footer_offset = file_size - ROMX_FOOTER_SIZE_0_1_0;
     if (memcmp(footer, "ROMX", 4U) != 0) {
         return romx_error_set(error, ROMX_E_INVALID_FOOTER, 0, footer_offset,
             "footer magic is not ROMX");
@@ -108,7 +108,7 @@ romx_result_t romx_parse_footer(
     memset(info, 0, sizeof(*info));
     info->struct_size = (uint32_t)sizeof(*info);
     info->version = romx_read_le32(footer + 0x04U);
-    if (info->version != ROMX_FORMAT_VERSION_1) {
+    if (info->version != ROMX_FORMAT_VERSION_0_1_0) {
         return romx_error_set(error, ROMX_E_INVALID_FOOTER, 0,
             footer_offset + 0x04U, "unsupported ROMX version");
     }
@@ -129,15 +129,15 @@ romx_result_t romx_parse_footer(
     info->footer_size = romx_read_le32(footer + 0x5CU);
     memcpy(info->body_sha256, footer + 0x60U, sizeof(info->body_sha256));
 
-    if (info->footer_size != ROMX_FOOTER_SIZE_V1) {
+    if (info->footer_size != ROMX_FOOTER_SIZE_0_1_0) {
         return romx_error_set(error, ROMX_E_INVALID_FOOTER, 0,
-            footer_offset + 0x5CU, "ROMX 1.0 footer_size must be 128");
+            footer_offset + 0x5CU, "ROMX 0.1.0 footer_size must be 128");
     }
 
     flags = info->flags;
-    if ((flags & ~ROMX_FLAGS_V1_MASK) != UINT32_C(0)) {
+    if ((flags & ~ROMX_FLAGS_0_1_0_MASK) != UINT32_C(0)) {
         return romx_error_set(error, ROMX_E_INVALID_FLAGS, 0,
-            footer_offset + 0x58U, "ROMX 1.0 reserved flags must be zero");
+            footer_offset + 0x58U, "ROMX 0.1.0 reserved flags must be zero");
     }
     if (((flags & ROMX_FLAG_HAS_METADATA) != 0U) !=
             (info->metadata.size != UINT64_C(0)) ||

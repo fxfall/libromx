@@ -36,8 +36,8 @@ static void test_metadata_and_cover(void)
 #endif
     {
         static const uint8_t payload_bytes[]={'a','b','c'};
-        static const char template_no_crc[]="{\"schema_version\":\"1.0\",\"name\":\"Writer\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"cover\":{\"mime_type\":\"image/png\"}}";
-        static const char template_override[]="{\"schema_version\":\"1.0\",\"name\":\"Writer\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"AAAAAAAA\",\"origin_crc32\":\"BBBBBBBB\"}";
+        static const char template_no_crc[]="{\"schema_version\":\"0.1.0\",\"name\":\"Writer\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"cover\":{\"mime_type\":\"image/png\"}}";
+        static const char template_override[]="{\"schema_version\":\"0.1.0\",\"name\":\"Writer\",\"platform\":\"gb\",\"payload_format\":\"gb\",\"crc32\":\"AAAAAAAA\",\"origin_crc32\":\"BBBBBBBB\"}";
         memory_input_t payload={payload_bytes,3U},cover={png,sizeof(png)},broken={png,sizeof(png)};
         romx_io_t payload_io=make_io(&payload),cover_io=make_io(&cover),broken_io;
         uint8_t broken_png[sizeof(png)];romx_writer_options_t options=ROMX_WRITER_OPTIONS_INIT;

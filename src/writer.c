@@ -408,7 +408,7 @@ romx_result_t romx_writer_write_io_path(const char *destination,
     uint8_t written_cover_sha256[32];
     uint32_t cover_width = UINT32_C(0);
     uint32_t cover_height = UINT32_C(0);
-    uint8_t footer[ROMX_FOOTER_SIZE_V1];
+    uint8_t footer[ROMX_FOOTER_SIZE_0_1_0];
     uint32_t flags = UINT32_C(0);
     uint64_t body_size;
     uint64_t file_size;
@@ -471,8 +471,8 @@ romx_result_t romx_writer_write_io_path(const char *destination,
             return result;
         }
     }
-    if (payload_size > UINT64_MAX - ROMX_FOOTER_SIZE_V1 ||
-        cover_size > UINT64_MAX - payload_size - ROMX_FOOTER_SIZE_V1) {
+    if (payload_size > UINT64_MAX - ROMX_FOOTER_SIZE_0_1_0 ||
+        cover_size > UINT64_MAX - payload_size - ROMX_FOOTER_SIZE_0_1_0) {
         return romx_error_set(error, ROMX_E_RANGE, 0,
             ROMX_OFFSET_UNKNOWN, "ROMX writer input sizes overflow");
     }
@@ -525,7 +525,7 @@ romx_result_t romx_writer_write_io_path(const char *destination,
         romx_sha256_context_t cover_context;
         romx_sha256_init(&cover_context);
         if (cover_offset > UINT64_MAX - cover_size ||
-            cover_offset + cover_size > UINT64_MAX - ROMX_FOOTER_SIZE_V1) {
+            cover_offset + cover_size > UINT64_MAX - ROMX_FOOTER_SIZE_0_1_0) {
             result = romx_error_set(error, ROMX_E_RANGE, 0,
                 ROMX_OFFSET_UNKNOWN, "ROMX cover size overflows");
             goto fail;
@@ -545,17 +545,17 @@ romx_result_t romx_writer_write_io_path(const char *destination,
         flags |= ROMX_FLAG_HAS_COVER;
     }
     body_size = payload_size + (uint64_t)metadata_size + cover_size;
-    if (body_size > UINT64_MAX - ROMX_FOOTER_SIZE_V1) {
+    if (body_size > UINT64_MAX - ROMX_FOOTER_SIZE_0_1_0) {
         result = romx_error_set(error, ROMX_E_RANGE, 0,
             ROMX_OFFSET_UNKNOWN, "ROMX output size overflows");
         goto fail;
     }
-    file_size = body_size + ROMX_FOOTER_SIZE_V1;
+    file_size = body_size + ROMX_FOOTER_SIZE_0_1_0;
     romx_sha256_finish(&body_context, body_sha256);
 
     memset(footer, 0, sizeof(footer));
     memcpy(footer, "ROMX", 4U);
-    write_le32(footer + 0x04U, ROMX_FORMAT_VERSION_1);
+    write_le32(footer + 0x04U, ROMX_FORMAT_VERSION_0_1_0);
     write_le64(footer + 0x08U, UINT64_C(0));
     write_le64(footer + 0x10U, payload_size);
     write_le64(footer + 0x18U, metadata_offset);
@@ -567,7 +567,7 @@ romx_result_t romx_writer_write_io_path(const char *destination,
         memcpy(footer + 0x60U, body_sha256, 32U);
     }
     write_le32(footer + 0x58U, flags);
-    write_le32(footer + 0x5cU, ROMX_FOOTER_SIZE_V1);
+    write_le32(footer + 0x5cU, ROMX_FOOTER_SIZE_0_1_0);
     result = output_write_all(descriptor, footer, sizeof(footer),
         body_size, error);
     if (result != ROMX_OK) {

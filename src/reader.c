@@ -33,7 +33,7 @@ romx_result_t romx_reader_create(
     romx_reader_t **out_reader,
     romx_error_t *error)
 {
-    uint8_t footer[ROMX_FOOTER_SIZE_V1];
+    uint8_t footer[ROMX_FOOTER_SIZE_0_1_0];
     uint64_t file_size = UINT64_C(0);
     uint64_t bytes_read = UINT64_C(0);
     romx_reader_t *reader;
@@ -64,23 +64,23 @@ romx_result_t romx_reader_create(
         }
         return result;
     }
-    if (file_size < ROMX_FOOTER_SIZE_V1) {
+    if (file_size < ROMX_FOOTER_SIZE_0_1_0) {
         return romx_error_set(error, ROMX_E_TRUNCATED, 0, file_size,
-            "file is shorter than the ROMX 1.0 footer");
+            "file is shorter than the ROMX 0.1.0 footer");
     }
 
-    result = io->read_at(io->user_data, file_size - ROMX_FOOTER_SIZE_V1,
-        footer, ROMX_FOOTER_SIZE_V1, &bytes_read, error);
+    result = io->read_at(io->user_data, file_size - ROMX_FOOTER_SIZE_0_1_0,
+        footer, ROMX_FOOTER_SIZE_0_1_0, &bytes_read, error);
     if (result != ROMX_OK) {
         if (error != NULL && error->code == ROMX_OK) {
             romx_error_set(error, result, 0,
-                file_size - ROMX_FOOTER_SIZE_V1, "failed to read ROMX footer");
+                file_size - ROMX_FOOTER_SIZE_0_1_0, "failed to read ROMX footer");
         }
         return result;
     }
-    if (bytes_read != ROMX_FOOTER_SIZE_V1) {
+    if (bytes_read != ROMX_FOOTER_SIZE_0_1_0) {
         return romx_error_set(error, ROMX_E_TRUNCATED, 0,
-            file_size - ROMX_FOOTER_SIZE_V1 + bytes_read,
+            file_size - ROMX_FOOTER_SIZE_0_1_0 + bytes_read,
             "ROMX footer read was truncated");
     }
 

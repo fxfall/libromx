@@ -1,8 +1,8 @@
 # libromx 0.1.0
 
-Status: complete against the stable, frozen ROMX 1.0 specification.
+Status: complete against the stable, frozen ROMX 0.1.0 specification.
 
-This release supports only ROMX footer version 1 and metadata schema 1.0. It
+This release supports ROMX 0.1.0 (footer wire code 1) and metadata schema 0.1.0. It
 does not contain a compatibility parser for an earlier container format.
 
 ## Completed scope

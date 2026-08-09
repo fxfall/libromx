@@ -122,7 +122,7 @@ romx_result_t romx_error_set(
     const char *message);
 
 romx_result_t romx_parse_footer(
-    const uint8_t footer[ROMX_FOOTER_SIZE_V1],
+    const uint8_t footer[ROMX_FOOTER_SIZE_0_1_0],
     uint64_t file_size,
     romx_info_t *info,
     romx_error_t *error);
