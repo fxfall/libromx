@@ -95,6 +95,14 @@ public:
         return std::string(format);
     }
 
+    romx_io_t payload_io() const
+    {
+        romx_io_t io = ROMX_IO_INIT;
+        romx_error_t detail = {};
+        check(romx_reader_get_payload_io(handle_, &io, &detail), detail);
+        return io;
+    }
+
     void extract_payload(const std::string &destination,
         const romx_extract_options_t *options = nullptr) const
     {

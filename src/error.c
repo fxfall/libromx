@@ -62,6 +62,7 @@ const char *romx_result_string(romx_result_t result)
     case ROMX_E_WRITE: return "output write failed";
     case ROMX_E_ATOMIC_RENAME: return "atomic output replacement failed";
     case ROMX_E_EXISTS: return "output already exists";
+    case ROMX_E_UNSUPPORTED: return "operation is not supported for this input";
     default: return "unknown libromx result";
     }
 }

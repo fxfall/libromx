@@ -143,3 +143,19 @@ add_test(NAME romx.phase6 COMMAND romx_phase6_tests)
 add_test(NAME romx.phase7 COMMAND romx_phase7_tests)
 add_test(NAME romx.phase8 COMMAND romx_phase8_tests)
 add_test(NAME romx.phase8_cpp COMMAND romx_phase8_cpp_tests)
+
+add_executable(romx_payload_view_tests test_payload_view.c)
+target_link_libraries(romx_payload_view_tests PRIVATE ROMX::romx)
+target_compile_features(romx_payload_view_tests PRIVATE c_std_99)
+set_target_properties(romx_payload_view_tests PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO)
+if(MSVC)
+    target_compile_options(romx_payload_view_tests PRIVATE /W4)
+    target_compile_definitions(romx_payload_view_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+else()
+    target_compile_options(romx_payload_view_tests PRIVATE
+        -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+endif()
+add_test(NAME romx.payload_view COMMAND romx_payload_view_tests)

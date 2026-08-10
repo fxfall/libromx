@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(libromx VERSION 0.1.0 LANGUAGES C)
+project(libromx VERSION 0.1.1 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CTest)
@@ -20,6 +20,7 @@ add_library(romx
     src/io_file.c
     src/json.c
     src/metadata.c
+    src/payload_view.c
     src/png.c
     src/region.c
     src/reader.c
@@ -73,6 +74,7 @@ install(FILES
     docs/INTEGRATION.md
     docs/PHASES_6_TO_8.md
     docs/RELEASE_0.1.0.md
+    docs/RELEASE_0.1.1.md
     docs/VALIDATION_AND_EXTRACTION.md
     docs/WRITER.md
     DESTINATION ${CMAKE_INSTALL_DOCDIR}

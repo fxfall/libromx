@@ -4,8 +4,9 @@
 0.1.0 container format. Its public ABI does not expose C++ STL types and does not depend on an
 emulator, frontend, GUI, database, or RetroArch playlist.
 
-**Release status: libromx 0.1.0 complete.** This release targets only the
-stable, frozen ROMX 0.1.0 specification and its frozen reader/writer corpora.
+**Development release: libromx 0.1.1.** This release retains the stable,
+frozen ROMX 0.1.0 wire format and adds frontend-oriented payload views and
+guarded read-only mapping APIs. The `0.1.0` branch preserves the original API.
 
 The project currently implements phases 1 through 8:
 
@@ -20,6 +21,8 @@ The project currently implements phases 1 through 8:
 - strict RFC 8259 UTF-8/JSON, recursive duplicate-key rejection, and ROMX metadata schema validation;
 - exact reader-side metadata JSON preservation and field access through opaque handles;
 - streaming region reads and callback sinks;
+- zero-copy, footer-bounded payload file views for direct emulator/VFS access;
+- guarded payload mappings for `retro_game_info.data` style consumers;
 - verified, atomic payload extraction and content-addressed caching;
 - structural PNG profile validation (IHDR/IDAT/IEND, legal color/depth, chunk CRCs), and extraction;
 - direct execution of the standard repository's frozen conformance fixtures;
@@ -56,6 +59,12 @@ region structure are valid. An enabled body hash is checked by validation and
 before extraction; the payload CRC32 is calculated on request. The
 callback functions and their `user_data` must remain valid
 until `romx_reader_close`; libromx does not take ownership of callback state.
+
+`romx_reader_get_payload_io` creates a borrowed virtual file whose byte zero
+and size are the footer-declared payload region. This lets an emulator adapter
+read an `.isox` exactly like the original `.iso`, with random access and no
+full extraction or payload-sized allocation. The view cannot expose metadata,
+cover, or footer bytes and remains valid only while its reader remains open.
 
 For the same reader to be used concurrently, a custom `romx_io_t` implementation
 must make `read_at` thread-safe. The built-in path reader uses positional I/O

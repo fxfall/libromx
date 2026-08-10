@@ -15,6 +15,19 @@ struct romx_reader {
     uint64_t max_cover_size;
     uint32_t max_cover_dimension;
     uint32_t io_chunk_size;
+    romx_result_t (*map_payload)(
+        void *user_data,
+        romx_region_info_t region,
+        romx_payload_mapping_t **out_mapping,
+        romx_error_t *error);
+};
+
+struct romx_payload_mapping {
+    const uint8_t *data;
+    uint64_t size;
+    void *allocation;
+    size_t allocation_size;
+    void (*release)(romx_payload_mapping_t *mapping);
 };
 
 struct romx_metadata {

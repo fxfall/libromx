@@ -58,6 +58,7 @@ typedef int32_t romx_result_t;
 #define ROMX_E_WRITE                   INT32_C(-20)
 #define ROMX_E_ATOMIC_RENAME           INT32_C(-21)
 #define ROMX_E_EXISTS                  INT32_C(-22)
+#define ROMX_E_UNSUPPORTED             INT32_C(-23)
 
 typedef struct romx_error {
     romx_result_t code;
@@ -131,6 +132,7 @@ typedef struct romx_info {
 
 typedef struct romx_reader romx_reader_t;
 typedef struct romx_metadata romx_metadata_t;
+typedef struct romx_payload_mapping romx_payload_mapping_t;
 
 typedef int32_t romx_region_t;
 #define ROMX_REGION_ROM       INT32_C(1)
@@ -289,6 +291,38 @@ ROMX_API romx_result_t romx_reader_read_region(
     uint64_t buffer_size,
     uint64_t *bytes_read,
     romx_error_t *error);
+
+/*
+ * Creates a borrowed, read-only virtual file containing only the ROM payload.
+ * Virtual offset zero maps to the footer-declared ROM offset and get_size
+ * reports only the ROM size. The returned callbacks never expose metadata,
+ * cover, or footer bytes. The reader must outlive every use of out_io.
+ */
+ROMX_API romx_result_t romx_reader_get_payload_io(
+    const romx_reader_t *reader,
+    romx_io_t *out_io,
+    romx_error_t *error);
+
+/*
+ * Creates an independently owned, read-only mapping of the ROM payload.
+ * The mapping remains valid after the reader is closed and must be released
+ * with romx_payload_mapping_close(). Implementations isolate partial boundary
+ * pages so bytes belonging to metadata, cover, or the footer are not exposed.
+ * Readers opened from custom romx_io_t sources may return ROMX_E_UNSUPPORTED.
+ */
+ROMX_API romx_result_t romx_reader_map_payload(
+    const romx_reader_t *reader,
+    romx_payload_mapping_t **out_mapping,
+    romx_error_t *error);
+
+ROMX_API const void *romx_payload_mapping_data(
+    const romx_payload_mapping_t *mapping);
+
+ROMX_API uint64_t romx_payload_mapping_size(
+    const romx_payload_mapping_t *mapping);
+
+ROMX_API void romx_payload_mapping_close(
+    romx_payload_mapping_t *mapping);
 
 ROMX_API romx_result_t romx_reader_copy_region(
     const romx_reader_t *reader,
