@@ -95,10 +95,16 @@ static romx_result_t romx_file_read_at(void *user_data, uint64_t offset,
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#if !defined(__SWITCH__)
 #include <sys/mman.h>
+#endif
+#if !defined(SSIZE_MAX)
+#define SSIZE_MAX ((size_t)(SIZE_MAX >> 1))
+#endif
 
 typedef struct romx_file_io { int descriptor; uint64_t size; } romx_file_io_t;
 
+#if !defined(__SWITCH__)
 static int romx_file_pread_exact(
     int descriptor, uint64_t offset, uint8_t *buffer, size_t size,
     size_t *bytes_read, int *system_code)
@@ -289,6 +295,7 @@ static romx_result_t romx_file_map_payload(
     romx_error_clear(error);
     return ROMX_OK;
 }
+#endif
 
 static void romx_file_close(void *user_data)
 {
@@ -379,7 +386,7 @@ romx_result_t romx_reader_open_path(const char *utf8_path,
     io.user_data = state; io.get_size = romx_file_get_size; io.read_at = romx_file_read_at;
     result = romx_reader_create(&io, options, romx_file_close, out_reader, error);
     if (result != ROMX_OK) romx_file_close(state);
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__SWITCH__)
     else (*out_reader)->map_payload = romx_file_map_payload;
 #endif
     return result;

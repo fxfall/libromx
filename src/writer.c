@@ -22,6 +22,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#if !defined(SSIZE_MAX)
+#define SSIZE_MAX ((size_t)(SIZE_MAX >> 1))
+#endif
 #endif
 
 typedef struct writer_settings {
