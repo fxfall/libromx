@@ -669,6 +669,16 @@ static romx_result_t writer_file_read_at(void *user, uint64_t offset,
     return ROMX_OK;
 }
 #else
+#if defined(__SWITCH__) || defined(ROMX_DISABLE_MMAP)
+static ssize_t writer_file_pread(int descriptor, void *buffer, size_t size, off_t offset)
+{
+    if (lseek(descriptor, offset, SEEK_SET) == (off_t)-1) return (ssize_t)-1;
+    return read(descriptor, buffer, size);
+}
+#else
+#define writer_file_pread pread
+#endif
+
 static romx_result_t writer_file_get_size(void *user, uint64_t *size,
     romx_error_t *error)
 {
@@ -690,9 +700,9 @@ static romx_result_t writer_file_read_at(void *user, uint64_t offset,
     }
     while (*bytes_read < size) {
         uint64_t remaining = size - *bytes_read;
-        size_t count = remaining > (uint64_t)SSIZE_MAX
-            ? (size_t)SSIZE_MAX : (size_t)remaining;
-        ssize_t actual = pread(input->descriptor,
+        size_t count = remaining > (uint64_t)SIZE_MAX
+            ? SIZE_MAX : (size_t)remaining;
+        ssize_t actual = writer_file_pread(input->descriptor,
             output + (size_t)*bytes_read, count,
             (off_t)(offset + *bytes_read));
         if (actual < 0) {
