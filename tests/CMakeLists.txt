@@ -159,3 +159,19 @@ else()
         -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 endif()
 add_test(NAME romx.payload_view COMMAND romx_payload_view_tests)
+
+add_executable(romx_payload_file_tests test_payload_file.c)
+target_link_libraries(romx_payload_file_tests PRIVATE ROMX::romx)
+target_compile_features(romx_payload_file_tests PRIVATE c_std_99)
+set_target_properties(romx_payload_file_tests PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO)
+if(MSVC)
+    target_compile_options(romx_payload_file_tests PRIVATE /W4)
+    target_compile_definitions(romx_payload_file_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+else()
+    target_compile_options(romx_payload_file_tests PRIVATE
+        -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+endif()
+add_test(NAME romx.payload_file COMMAND romx_payload_file_tests)

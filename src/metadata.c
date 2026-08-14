@@ -697,6 +697,52 @@ romx_result_t romx_metadata_get_string(const romx_metadata_t *metadata,
     return ROMX_OK;
 }
 
+romx_result_t romx_metadata_get_crc32(
+    const romx_metadata_t *metadata,
+    uint32_t *crc32,
+    romx_error_t *error)
+{
+    char value[9];
+    uint64_t required = 0U;
+    uint32_t parsed = UINT32_C(0);
+    size_t index;
+    romx_result_t result;
+
+    if (crc32 != NULL) {
+        *crc32 = UINT32_C(0);
+    }
+    if (metadata == NULL || crc32 == NULL) {
+        return romx_error_set(error, ROMX_E_INVALID_ARGUMENT, 0,
+            ROMX_OFFSET_UNKNOWN, "metadata and CRC32 output must not be null");
+    }
+    result = romx_metadata_get_string(metadata, "crc32", value,
+        sizeof(value), &required, error);
+    if (result != ROMX_OK) {
+        return result;
+    }
+    if (required != sizeof(value)) {
+        return romx_error_set(error, ROMX_E_METADATA_SCHEMA, 0,
+            ROMX_OFFSET_UNKNOWN, "metadata CRC32 must contain eight hexadecimal characters");
+    }
+    for (index = 0U; index < 8U; ++index) {
+        uint32_t nibble;
+        if (value[index] >= '0' && value[index] <= '9') {
+            nibble = (uint32_t)(value[index] - '0');
+        } else if (value[index] >= 'a' && value[index] <= 'f') {
+            nibble = (uint32_t)(value[index] - 'a') + UINT32_C(10);
+        } else if (value[index] >= 'A' && value[index] <= 'F') {
+            nibble = (uint32_t)(value[index] - 'A') + UINT32_C(10);
+        } else {
+            return romx_error_set(error, ROMX_E_METADATA_SCHEMA, 0,
+                ROMX_OFFSET_UNKNOWN, "metadata CRC32 is not hexadecimal");
+        }
+        parsed = (parsed << 4U) | nibble;
+    }
+    *crc32 = parsed;
+    romx_error_clear(error);
+    return ROMX_OK;
+}
+
 romx_result_t romx_metadata_get_value_json(const romx_metadata_t *metadata,
     const char *key, void *buffer, uint64_t capacity,
     uint64_t *required_size, romx_error_t *error)

@@ -21,6 +21,7 @@ add_library(romx
     src/json.c
     src/metadata.c
     src/payload_view.c
+    src/payload_file.c
     src/png.c
     src/region.c
     src/reader.c

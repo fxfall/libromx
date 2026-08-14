@@ -133,12 +133,32 @@ typedef struct romx_info {
 typedef struct romx_reader romx_reader_t;
 typedef struct romx_metadata romx_metadata_t;
 typedef struct romx_payload_mapping romx_payload_mapping_t;
+typedef struct romx_payload_file romx_payload_file_t;
 
 typedef int32_t romx_region_t;
 #define ROMX_REGION_ROM       INT32_C(1)
 #define ROMX_REGION_METADATA  INT32_C(2)
 #define ROMX_REGION_COVER     INT32_C(3)
 #define ROMX_REGION_BODY      INT32_C(4)
+
+/* Independent, read-only cursor over the footer-declared ROM payload. */
+typedef uint32_t romx_payload_file_flags_t;
+#define ROMX_PAYLOAD_FILE_VALIDATE_BODY_SHA256 UINT32_C(0x00000001)
+
+typedef struct romx_payload_file_options {
+    uint32_t struct_size;
+    romx_payload_file_flags_t flags;
+    uint32_t reserved;
+} romx_payload_file_options_t;
+
+#define ROMX_PAYLOAD_FILE_OPTIONS_INIT { \
+    (uint32_t)sizeof(romx_payload_file_options_t), UINT32_C(0), UINT32_C(0) \
+}
+
+typedef int32_t romx_payload_seek_position_t;
+#define ROMX_PAYLOAD_SEEK_START   INT32_C(0)
+#define ROMX_PAYLOAD_SEEK_CURRENT INT32_C(1)
+#define ROMX_PAYLOAD_SEEK_END     INT32_C(2)
 
 typedef uint32_t romx_validate_flags_t;
 #define ROMX_VALIDATE_PAYLOAD_HASHES UINT32_C(0x00000001) /* derived values; no payload hash is stored */
@@ -303,6 +323,44 @@ ROMX_API romx_result_t romx_reader_get_payload_io(
     romx_io_t *out_io,
     romx_error_t *error);
 
+/* Opens an independent read-only cursor over a ROMX payload. The handle owns
+ * its reader and its current offset, so multiple handles may be used by
+ * concurrent callers without sharing cursor state. Reads are bounded to the
+ * payload region and return regular-file EOF semantics. Body SHA-256 remains
+ * opt-in through ROMX_PAYLOAD_FILE_VALIDATE_BODY_SHA256. */
+ROMX_API romx_result_t romx_payload_file_open_path(
+    const char *utf8_path,
+    const romx_reader_options_t *reader_options,
+    const romx_payload_file_options_t *options,
+    romx_payload_file_t **out_file,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_payload_file_get_size(
+    const romx_payload_file_t *file,
+    uint64_t *size,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_payload_file_tell(
+    const romx_payload_file_t *file,
+    uint64_t *position,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_payload_file_seek(
+    romx_payload_file_t *file,
+    int64_t offset,
+    romx_payload_seek_position_t position,
+    uint64_t *new_position,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_payload_file_read(
+    romx_payload_file_t *file,
+    void *buffer,
+    uint64_t size,
+    uint64_t *bytes_read,
+    romx_error_t *error);
+
+ROMX_API void romx_payload_file_close(romx_payload_file_t *file);
+
 /*
  * Creates an independently owned, read-only mapping of the ROM payload.
  * The mapping remains valid after the reader is closed and must be released
@@ -356,6 +414,12 @@ ROMX_API romx_result_t romx_metadata_get_string(
     char *buffer,
     uint64_t capacity,
     uint64_t *required_size,
+    romx_error_t *error);
+
+/* Parses the canonical eight-digit metadata CRC32 into a native value. */
+ROMX_API romx_result_t romx_metadata_get_crc32(
+    const romx_metadata_t *metadata,
+    uint32_t *crc32,
     romx_error_t *error);
 
 ROMX_API romx_result_t romx_metadata_get_value_json(
