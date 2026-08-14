@@ -6,6 +6,7 @@
 
 struct romx_payload_file {
     romx_reader_t *reader;
+    uint32_t entry_index;
     uint64_t size;
     uint64_t position;
 };
@@ -21,7 +22,7 @@ static romx_result_t romx_payload_file_validate_options(
         return romx_error_set(error, ROMX_E_INVALID_ARGUMENT, 0,
             ROMX_OFFSET_UNKNOWN, "payload file options structure is too small");
     }
-    if ((options->flags & ~ROMX_PAYLOAD_FILE_VALIDATE_BODY_SHA256) != 0U ||
+    if ((options->flags & ~ROMX_PAYLOAD_FILE_VALIDATE_IMMUTABLE_SHA256) != 0U ||
         options->reserved != UINT32_C(0)) {
         return romx_error_set(error, ROMX_E_INVALID_ARGUMENT, 0,
             ROMX_OFFSET_UNKNOWN,
@@ -38,7 +39,6 @@ romx_result_t romx_payload_file_open_path(
     romx_error_t *error)
 {
     romx_payload_file_t *file;
-    romx_info_t info = ROMX_INFO_INIT;
     romx_validation_report_t report = ROMX_VALIDATION_REPORT_INIT;
     romx_result_t result;
 
@@ -66,23 +66,27 @@ romx_result_t romx_payload_file_open_path(
         free(file);
         return result;
     }
-    result = romx_reader_get_info(file->reader, &info, error);
-    if (result != ROMX_OK) {
-        romx_reader_close(file->reader);
-        free(file);
-        return result;
-    }
     if (options != NULL &&
-        (options->flags & ROMX_PAYLOAD_FILE_VALIDATE_BODY_SHA256) != 0U) {
+        (options->flags & ROMX_PAYLOAD_FILE_VALIDATE_IMMUTABLE_SHA256) != 0U) {
         result = romx_reader_validate(file->reader,
-            ROMX_VALIDATE_BODY_SHA256, &report, error);
+            ROMX_VALIDATE_IMMUTABLE_SHA256, &report, error);
         if (result != ROMX_OK) {
             romx_reader_close(file->reader);
             free(file);
             return result;
         }
     }
-    file->size = info.rom.size;
+    {
+        romx_entry_info_t entry = ROMX_ENTRY_INFO_INIT;
+        result = romx_reader_get_entrypoint(file->reader, &entry, error);
+        if (result != ROMX_OK) {
+            romx_reader_close(file->reader);
+            free(file);
+            return result;
+        }
+        file->entry_index = entry.index;
+        file->size = entry.data_size;
+    }
     file->position = UINT64_C(0);
     *out_file = file;
     return ROMX_OK;
@@ -208,7 +212,7 @@ romx_result_t romx_payload_file_read(
     if (size == UINT64_C(0) || file->position >= file->size) {
         return ROMX_OK;
     }
-    result = romx_reader_read_region(file->reader, ROMX_REGION_ROM,
+    result = romx_reader_read_entry(file->reader, file->entry_index,
         file->position, buffer, size, &count, error);
     if (result != ROMX_OK) {
         return result;

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(libromx VERSION 0.1.1 LANGUAGES C)
+project(libromx VERSION 0.2.0 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CTest)
@@ -10,7 +10,7 @@ option(ROMX_BUILD_TESTS "Build libromx tests" ${BUILD_TESTING})
 option(ROMX_BUILD_EXAMPLES "Build libromx C and C++ examples" OFF)
 set(ROMX_CONFORMANCE_FIXTURE_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../romx/tests/fixtures"
-    CACHE PATH "Path to the frozen ROMX 0.1.0 conformance fixtures")
+    CACHE PATH "Path to ROMX conformance and reference fixtures")
 
 add_library(romx
     src/crc32.c
@@ -20,13 +20,19 @@ add_library(romx
     src/io_file.c
     src/json.c
     src/metadata.c
+    src/mutable.c
+    src/mutable_write.c
     src/payload_view.c
     src/payload_file.c
+    src/ridx.c
     src/png.c
+    src/probe.c
     src/region.c
     src/reader.c
+    src/registry.c
     src/sha256.c
     src/validate.c
+    src/vfs_file.c
     src/writer.c
 )
 add_library(ROMX::romx ALIAS romx)
@@ -73,10 +79,6 @@ install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(FILES
     README.md
     docs/INTEGRATION.md
-    docs/PHASES_6_TO_8.md
-    docs/RELEASE_0.1.0.md
-    docs/RELEASE_0.1.1.md
-    docs/VALIDATION_AND_EXTRACTION.md
     docs/WRITER.md
     DESTINATION ${CMAKE_INSTALL_DOCDIR}
 )

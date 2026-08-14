@@ -1,81 +1,66 @@
 # libromx
 
-`libromx` is an independent, reusable C99 library for the stable, frozen ROMX
-0.1.0 container format. Its public ABI does not expose C++ STL types and does not depend on an
-emulator, frontend, GUI, database, or RetroArch playlist.
+`libromx` is a portable C99 implementation of the ROMX 0.2.0 container
+format. It is independent of emulator cores, frontends, GUI frameworks,
+databases, and RetroArch playlists. The public ABI contains no C++ STL types.
 
-**Development release: libromx 0.1.1.** This release retains the stable,
-frozen ROMX 0.1.0 wire format and adds frontend-oriented payload views and
-guarded read-only mapping APIs. The `0.1.0` branch preserves the original API.
+ROMX 0.2.0 is the only wire format implemented by this branch.
 
-The project currently implements phases 1 through 8:
+## Features
 
-- ROMX 0.1.0 footer discovery at end of file;
-- UTF-8 path and callback-based input;
-- explicit little-endian decoding;
-- 64-bit offsets and sizes;
-- magic, version, footer-size, flag, range, overlap, and complete body-coverage validation;
-- format recognition independent of the filename extension;
-- RetroArch-compatible payload CRC32 calculation (lower-case eight-digit metadata formatting);
-- optional container body SHA-256 validation;
-- strict RFC 8259 UTF-8/JSON, recursive duplicate-key rejection, and ROMX metadata schema validation;
-- exact reader-side metadata JSON preservation and field access through opaque handles;
-- streaming region reads and callback sinks;
-- zero-copy, footer-bounded payload file views for direct emulator/VFS access;
-- guarded payload mappings for `retro_game_info.data` style consumers;
-- verified, atomic payload extraction and content-addressed caching;
-- structural PNG profile validation (IHDR/IDAT/IEND, legal color/depth, chunk CRCs), and extraction;
-- direct execution of the standard repository's frozen conformance fixtures;
-- streaming path and callback writers with canonical layout and atomic publish;
-- automatic metadata lookup CRC32 generation and optional override;
-- compact canonical writer metadata and generated PNG cover descriptors;
-- exact PNG cover embedding after structural validation;
-- an optional header-only C++11 RAII wrapper and buildable examples;
-- byte-exact validation against the frozen reader and writer fixture corpora.
+- fixed 128-byte footer and overflow-checked region parsing;
+- mandatory RIDX index with one launch entrypoint and multiple virtual files;
+- direct entrypoint callback view and guarded memory mapping;
+- random-access virtual files for CUE, GDI, M3U, tracks, and sidecars without
+  extracting the complete payload;
+- optional per-entry CRC32 and immutable SHA-256 validation;
+- strict ROMX 0.2.0 metadata JSON and embedded PNG validation;
+- native multi-entry streaming writer with atomic publication;
+- optional payload probing when metadata or cover is absent;
+- fixed-capacity mutable SAVE, CHEAT, STATS, and PRIVATE objects;
+- durable in-place mutable write, overwrite, and delete commits without moving
+  the footer or rewriting immutable game data.
 
-Image conversion remains intentionally outside the core library.
+Opening a container performs bounded structural reads. Payload CRC32 and
+immutable SHA-256 scans happen only when explicitly requested. A corrupt or
+exhausted mutable region never prevents access to otherwise valid payload,
+RIDX, metadata, or cover data.
 
-ROMX 0.1.0 compatibility changes are limited to new conformance fixtures or
-clarifying text that does not change byte semantics. Footer layout, field
-meaning, or binary-validity changes require a new ROMX format version.
-Metadata schema versions evolve independently; an unsupported metadata schema
-may be skipped while the payload remains extractable.
+Payload probing currently recognizes useful embedded headers and artwork from
+GB/GBC, GBA, NDS, N64 byte-order variants, SNES, Mega Drive/Genesis/SMD,
+PBP, and PSP ISO inputs. Results are best-effort: a failed probe leaves the
+optional metadata or cover region absent. Image conversion is outside libromx.
 
 ## Build and test
 
 ```sh
-cmake -S . -B build -DROMX_BUILD_TESTS=ON
+cmake -S . -B build -DROMX_BUILD_TESTS=ON \
+  -DROMX_CONFORMANCE_FIXTURE_DIR=/path/to/romx/tests/fixtures
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The frozen standard corpus is enabled automatically when the standard
-repository is adjacent to this project. Otherwise configure
-`ROMX_CONFORMANCE_FIXTURE_DIR=/path/to/romx/tests/fixtures`.
+When the specification repository is adjacent to this project, the fixture
+path is detected automatically. Tests cover footer/RIDX parsing, multi-file
+VFS access, the native writer, payload probing, immutable validation, and
+mutable in-place commit behavior.
 
-The callback API is useful for custom storage and frontend VFS adapters. A
-successful `romx_reader_open_io` call means that the ROMX footer and complete
-region structure are valid. An enabled body hash is checked by validation and
-before extraction; the payload CRC32 is calculated on request. The
-callback functions and their `user_data` must remain valid
-until `romx_reader_close`; libromx does not take ownership of callback state.
+## Frontend integration
 
-`romx_reader_get_payload_io` creates a borrowed virtual file whose byte zero
-and size are the footer-declared payload region. This lets an emulator adapter
-read an `.isox` exactly like the original `.iso`, with random access and no
-full extraction or payload-sized allocation. The view cannot expose metadata,
-cover, or footer bytes and remains valid only while its reader remains open.
+For a single-file game, the RIDX entrypoint is the native ROM or image. For a
+multi-file game, it is normally a descriptor such as CUE, GDI, or M3U.
 
-For the same reader to be used concurrently, a custom `romx_io_t` implementation
-must make `read_at` thread-safe. The built-in path reader uses positional I/O
-and supports concurrent reads. Reader metadata is immutable after open.
+- Use `romx_reader_get_payload_io` for an entrypoint-only positional-read view.
+- Use `romx_reader_map_payload` when a core accepts one memory buffer.
+- Use `romx_vfs_file_open` to expose every RIDX path requested by a multi-file
+  core.
+- Use `romx_mutable_file_open` to restore an explicitly selected object.
+- Use `romx_mutable_write_*` and `romx_mutable_delete_path` only after an
+  explicit frontend save/delete action.
 
-See [docs/VALIDATION_AND_EXTRACTION.md](docs/VALIDATION_AND_EXTRACTION.md) for
-validation, optional-region, CRC32, and cache semantics.
-See [docs/WRITER.md](docs/WRITER.md) and
-[docs/PHASES_6_TO_8.md](docs/PHASES_6_TO_8.md) for writer semantics and the
-completed phase objectives.
-See [docs/INTEGRATION.md](docs/INTEGRATION.md) for C, C++, Rust, frontend, and
-callback lifetime guidance.
-See [docs/RELEASE_0.1.0.md](docs/RELEASE_0.1.0.md) for the frozen release scope
-and verification record.
+Borrowed callback views and cursors require their `romx_reader_t` to remain
+open. A successful guarded mapping owns its mapping and survives reader close.
+
+The normative format rules are maintained in the
+[ROMX specification](https://github.com/fxfall/romx-container-spec). This
+repository defines the library API and implementation behavior.

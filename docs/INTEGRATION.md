@@ -1,124 +1,76 @@
-# Integration guide
+# ROMX 0.2.0 integration guide
 
-## C and C++
+## C, C++, and Rust
 
-Install libromx and consume its exported CMake target:
+Install libromx and consume its exported target:
 
 ```cmake
 find_package(romx CONFIG REQUIRED)
 target_link_libraries(your_target PRIVATE ROMX::romx)
 ```
 
-Include `<romx/romx.h>` from C99 or later. C++ applications may use the same C
-ABI directly or include `<romx/romx.hpp>` for the optional C++11 RAII wrapper.
-The wrapper is header-only and does not change the core library ABI.
+Include `<romx/romx.h>` from C99 or later. C++ applications may use the C ABI
+or the optional header-only `<romx/romx.hpp>` wrapper. Rust and other FFI
+consumers should bind only `romx/romx.h`. Initialize every public structure
+with its matching `*_INIT` macro.
 
-Initialize every public options/report structure with its matching `*_INIT`
-macro. Check every returned `romx_result_t`; `romx_error_t` supplies the system
-code, byte offset, and a bounded diagnostic message.
+## Launch data paths
 
-## Rust and other FFI consumers
+Open the container once and inspect `romx_info_t`. No launch path copies the
+complete concatenated payload merely to open a game.
 
-Bind only `romx/romx.h`. Public structures use fixed-width integers, pointers,
-and callbacks; no C++ type crosses the ABI. Opaque reader and metadata handles
-must be closed with their matching function. A Rust wrapper should mark a
-custom `romx_io_t` as concurrently usable only when its `read_at` callback and
-user state are thread-safe.
+`romx_reader_get_payload_io` returns a borrowed positional-read view of the
+RIDX entrypoint. For a single-file game this is the native ROM or disc image.
+For a multi-file game it can be a small descriptor rather than the entire
+payload region.
 
-## Frontends and emulator adapters
+For multi-file content, enumerate or resolve virtual paths with
+`romx_reader_get_entry*` and `romx_reader_find_entry`, then open them with
+`romx_vfs_file_open`. The frontend exposes the stored descriptor and referenced
+tracks through this VFS. libromx does not extract the set at launch.
 
-libromx reads, validates, writes, extracts, and exposes a bounded virtual view
-of the payload. A frontend may use either of these integration modes:
+`romx_reader_map_payload` maps only the entrypoint for path-backed readers.
+Mapping is intended for a single-file entrypoint and is not a replacement for
+the multi-file VFS.
 
-### Direct payload view
+## Validation and startup cost
 
-Use `romx_reader_get_payload_io` when a core or its file loader can consume
-random-access callbacks:
+Opening validates footer, region, RIDX, and mutable structure with bounded
+reads. It does not automatically scan all game bytes.
 
-```c
-romx_reader_t *container = NULL;
-romx_io_t iso = ROMX_IO_INIT;
-uint64_t iso_size = 0;
-romx_error_t error = {0};
+- `ROMX_VALIDATE_ENTRY_CRC32` scans entries that declare `HAS_CRC32`.
+- `ROMX_VALIDATE_IMMUTABLE_SHA256` scans the immutable range only when the
+  footer declares SHA-256.
+- Mutable object CRC32 is checked before an ACTIVE object is returned/opened.
 
-if (romx_reader_open_path("game.isox", NULL, &container, &error) == ROMX_OK &&
-    romx_reader_get_payload_io(container, &iso, &error) == ROMX_OK &&
-    iso.get_size(iso.user_data, &iso_size, &error) == ROMX_OK) {
-    /* Give iso.get_size and iso.read_at to the core's FileLoader/VFS. */
-}
+The immutable hash excludes mutable bytes and the footer, so updating a save
+does not rehash a multi-gigabyte image.
 
-/* The borrowed iso view must no longer be used after this call. */
-romx_reader_close(container);
-```
+## Mutable restore and explicit commit
 
-The returned `romx_io_t` acts as a read-only virtual file:
+Use `romx_reader_get_mutable_status` before enumeration. A frontend can copy a
+selected object to the core's expected save/cheat/statistics location with
+`romx_mutable_file_open`.
 
-- virtual byte zero maps to `rom_offset` from the validated footer;
-- virtual size is exactly `rom_size`;
-- reads crossing the payload end are shortened like regular file reads;
-- reads at or beyond the payload end return zero bytes;
-- metadata, cover, and footer bytes are never visible;
-- random reads allocate no buffer inside libromx and never read the complete
-  payload unless the caller explicitly requests every byte.
+Writing back is a separate explicit action. Call `romx_mutable_write_io_path`
+or `romx_mutable_write_path`; call `romx_mutable_delete_path` for explicit
+deletion. libromx performs the in-place durable transaction, while UI,
+destination directories, synchronization policy, and user confirmation remain
+frontend responsibilities. Save states are outside the ROMX 0.2.0 namespaces.
 
-This is the preferred low-memory integration for large `.isox` payloads. A
-PPSSPP-style file loader should implement its size and positional-read methods
-with this view. It may keep its own small fixed-size cache, but must not allocate
-`rom_size` bytes merely to open the image.
+A mutable error never invalidates or blocks immutable payload access.
 
-`romx_io_t` is a callback interface, not an operating-system pathname. A core
-that accepts only a real path must either be adapted at its file-loader/VFS
-layer or use the extraction mode below. libromx does not mount a virtual file
-or claim that the `.isox` container itself is a raw ISO path.
+## Optional entrypoint probing
 
-### Guarded payload mapping
+`romx_probe_open_io` and `romx_probe_open_path` inspect a caller-declared file
+format for embedded title, serial, and artwork/icon data. The native writer can
+invoke the same mechanism with `ROMX_WRITER_PROBE_PAYLOAD` when metadata or
+cover is missing. Probe results are descriptive and never replace footer/RIDX
+platform and format declarations.
 
-`romx_reader_map_payload` creates an independently owned, read-only payload
-mapping for APIs such as `retro_game_info.data`. Full aligned payload pages are
-file-backed. At most two partial boundary pages are copied into anonymous
-memory so bytes belonging to metadata, cover, or the footer are not exposed.
-Guard pages surround the mapping. Closing the reader does not invalidate a
-successful mapping; release it with `romx_payload_mapping_close`.
+## Lifetimes and concurrency
 
-Mapping is an optional capability of path-backed readers. A custom
-`romx_io_t` source, an address-space limit, or a platform without the guarded
-mapping backend returns `ROMX_E_UNSUPPORTED` or `ROMX_E_RANGE`; callers should
-then use bounded payload I/O. If the container enables body SHA-256, mapping
-validates it first. With the default disabled flag, mapping does not scan the
-complete payload at startup.
-
-### Extracted payload path
-
-Use extraction for an unmodified path-only core:
-
-1. Open and validate the ROMX file.
-2. Extract or reuse the atomically verified payload cache entry.
-3. Pass only the extracted raw payload path to the emulator core.
-4. Read the embedded cover and metadata independently for presentation.
-
-Do not pass the complete ROMX container as though it were a raw image. Pass
-either the bounded payload view or an extracted raw payload path. Do not
-generate LPL data in the core library or store UI/database state in ROMX
-metadata.
-
-## Streaming and lifetime
-
-Path APIs own their file handles for the duration of the call or reader handle.
-For callback APIs, the caller owns `user_data` and must keep it valid until the
-operation finishes. Callback `get_size` must remain stable during a writer call,
-and `read_at` must return bytes from the same immutable input snapshot.
-
-Readers contain immutable parsed state and the built-in path backend supports
-concurrent positional reads. Writer calls have no shared mutable global state;
-separate calls can run concurrently. Concurrent calls targeting the same output
-or cache path are resolved by atomic publication.
-
-A payload view borrows its reader. Its callbacks may be called concurrently
-under the same rules as `romx_reader_read_region`: the built-in path reader is
-safe, while a caller-supplied source must provide a thread-safe `read_at`.
-
-## Cover conversion
-
-The writer accepts only validated PNG bytes. Applications that accept JPEG,
-WebP, GIF, BMP, resizing, or color conversion should perform that work before
-calling libromx and keep the image dependency in a separate optional module.
+Borrowed entrypoint views and VFS/mutable cursors require the reader to outlive
+them. Path-backed readers use positional I/O. A custom `romx_io_t` source must
+keep `user_data` valid, report a stable size, and make `read_at` thread-safe if
+used concurrently.

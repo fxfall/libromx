@@ -1,61 +1,64 @@
-# ROMX writer API
+# ROMX 0.2.0 writer and mutable commit API
 
-The writer has two entry points:
+## Immutable container writer
 
-- `romx_writer_write_paths` reads payload, optional metadata, and optional PNG
-  cover from UTF-8 paths.
-- `romx_writer_write_io_path` reads the payload and optional cover through
-  positional `romx_io_t` callbacks. Metadata remains an in-memory JSON region
-  because ROMX implementations cap it at a small configurable size.
+`romx_writer_write_io_entries` and `romx_writer_write_path_entries` create
+native ROMX 0.2.0 containers. Each input becomes one RIDX entry. Exactly one
+entry must set `ROMX_RIDX_ENTRYPOINT`, and its `format_id` must be non-zero.
+`ROMX_RIDX_HAS_CRC32` independently enables a stored CRC32 for that entry.
 
-Both functions stream large payloads, write canonical region order, and publish
-the completed file atomically. They do not modify the payload and do not write
-a payload SHA-256 into the footer.
+The writer streams entry bytes without compression. It physically writes the
+entrypoint first at payload offset zero, writes the remaining entries, builds
+RIDX, then writes optional metadata, optional PNG cover, immutable alignment
+padding, optional mutable capacity, and the 128-byte footer. The completed
+temporary file is published atomically.
 
-## Options
+Initialize `romx_writer_options_t` with `ROMX_WRITER_OPTIONS_INIT` and set a
+registered `platform_id` and `launch_format_id`.
 
-Initialize options with `ROMX_WRITER_OPTIONS_INIT`.
+- `ROMX_WRITER_IMMUTABLE_SHA256` stores the optional immutable-range digest.
+- `ROMX_WRITER_REPLACE_EXISTING` permits atomic destination replacement.
+- `ROMX_WRITER_DURABLE` flushes the completed temporary file before publish.
+- `ROMX_WRITER_PROBE_PAYLOAD` asks libromx to fill a missing metadata region
+  and/or cover from the entrypoint when the format has extractable information.
 
-- `ROMX_WRITER_BODY_SHA256` enables SHA-256 of every byte before the footer.
-  It is disabled by default and the footer field is then all zero.
-- `ROMX_WRITER_REPLACE_EXISTING` atomically replaces an existing destination.
-  Without it, an existing destination returns `ROMX_E_EXISTS` unchanged.
-- `ROMX_WRITER_DURABLE` flushes the temporary output before publication.
-- `lookup_crc32` optionally supplies an eight-digit database lookup identity.
-  Uppercase input is accepted and written in lowercase.
-- Zero limit fields select the documented reader defaults.
+Probing never overrides caller-supplied metadata or cover. It is best-effort;
+unsupported, absent, encrypted, damaged, or non-text header content remains
+absent. An extracted image must still pass the normal PNG validator.
 
-## Metadata template behavior
+For mutable storage, `mutable_capacity` must be a multiple of 4096 and at least
+12288. `mutable_entry_capacity` must be a positive multiple of eight; zero
+selects eight slots. Capacity is reserved once and does not enlarge during
+later commits.
 
-A template must contain `schema_version`, `name`, `platform`, and
-`payload_format`. Its `crc32` may be absent or stale. The writer calculates the
-payload CRC32 while streaming and inserts or replaces `crc32`. Without an
-override it writes the calculated payload value. With an override it writes the
-override as the lookup value.
+## Metadata and cover
 
-If the template contains `origin_crc32`, the writer always replaces it with
-the calculated payload value. This keeps lookup identity and payload provenance
-separate. Insignificant JSON whitespace is removed for canonical output. When a
-cover is supplied, the writer regenerates the descriptive `cover` object from
-the validated PNG dimensions. The generated metadata is parsed and
-schema-validated again before it is written.
+Metadata is an optional in-memory strict UTF-8 JSON object conforming to the
+ROMX 0.2.0 schema. libromx does not rewrite caller metadata and does not invent
+database values. The cover is an optional PNG callback/path input and is
+embedded byte-for-byte after structural validation. JPEG/WebP/GIF/BMP
+conversion and resizing belong in a frontend or image adapter.
 
-## Cover behavior
+## Mutable in-place commits
 
-The cover input must already be PNG. libromx validates its signature, chunk
-bounds and CRCs, requires a first-and-unique legal IHDR, requires consecutive
-IDAT chunks and a final IEND with no trailing bytes, and checks legal PNG
-color/depth combinations and PLTE rules. Valid PNG bytes are embedded exactly
-as supplied. When metadata is present, its descriptive cover object is generated
-as `image/png` with the validated width and height. Image conversion belongs in
-an optional adapter outside the core library.
+`romx_mutable_write_io_path` and `romx_mutable_write_path` explicitly create or
+overwrite one opaque SAVE, CHEAT, STATS, or PRIVATE object inside the reserved
+mutable region. `romx_mutable_delete_path` explicitly deletes one object.
 
-## Errors and atomicity
+Writes lock the container, calculate the source CRC32, and use the required
+three-stage protocol:
 
-Every failure returns a `romx_result_t` and fills `romx_error_t`; the library
-never exits the process. Invalid metadata and PNG input fail before publication.
-Write, sync, footer, or publication failures remove the temporary file. An
-existing destination is not changed unless replacement was explicitly enabled.
+1. write and flush a valid `WRITING` directory entry;
+2. overwrite the object's fixed-capacity extent and flush its bytes;
+3. write and flush the final `ACTIVE` entry.
 
-`romx_writer_report_t` reports final sizes, footer flags, actual payload CRC32,
-derived payload SHA-256, and the body SHA-256 when enabled.
+The third step is the commit point. Delete similarly commits `DELETING` before
+clearing the directory slot. Every mutable commit is durable; the options
+`flags` field is reserved and must be zero. A replacement keeps the original
+extent and capacity and increments its generation. A new object may request a
+larger fixed `data_capacity`, rounded to 64-byte alignment.
+
+Mutable commits never change file size, move the footer, or recalculate the
+optional immutable SHA-256. Insufficient capacity returns
+`ROMX_E_MUTABLE_NO_SPACE`. An interrupted transaction may quarantine the
+affected slot, but immutable game content remains readable.
