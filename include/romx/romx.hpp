@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace romx {
 
@@ -85,14 +86,12 @@ public:
         return report;
     }
 
-    std::string payload_format() const
+    romx_entry_info_t entrypoint() const
     {
-        char format[8];
-        uint64_t required = 0;
+        romx_entry_info_t value = ROMX_ENTRY_INFO_INIT;
         romx_error_t detail = {};
-        check(romx_reader_get_payload_format(handle_, format,
-            sizeof(format), &required, &detail), detail);
-        return std::string(format);
+        check(romx_reader_get_entrypoint(handle_, &value, &detail), detail);
+        return value;
     }
 
     romx_io_t payload_io() const
@@ -117,18 +116,43 @@ private:
     romx_reader_t *handle_;
 };
 
-inline romx_writer_report_t write_paths(const std::string &destination,
-    const std::string &payload, const std::string &metadata = std::string(),
-    const std::string &cover = std::string(),
-    const romx_writer_options_t *options = nullptr)
+inline romx_writer_report_t write_path_entries(
+    const std::string &destination,
+    const std::vector<romx_writer_path_entry_t> &entries,
+    const romx_writer_options_t &options,
+    const std::string &metadata = std::string(),
+    const std::string &cover = std::string())
 {
     romx_writer_report_t report = ROMX_WRITER_REPORT_INIT;
     romx_error_t detail = {};
     const char *metadata_path = metadata.empty() ? nullptr : metadata.c_str();
     const char *cover_path = cover.empty() ? nullptr : cover.c_str();
-    check(romx_writer_write_paths(destination.c_str(), payload.c_str(),
-        metadata_path, cover_path, options, &report, &detail), detail);
+    check(romx_writer_write_path_entries(destination.c_str(), entries.data(),
+        static_cast<uint32_t>(entries.size()), metadata_path, cover_path,
+        &options, &report, &detail), detail);
     return report;
+}
+
+inline romx_mutable_object_info_t write_mutable(
+    const std::string &container,
+    romx_mutable_namespace_t object_namespace,
+    const std::string &key,
+    const std::string &source,
+    const romx_mutable_write_options_t *options = nullptr)
+{
+    romx_mutable_object_info_t object = ROMX_MUTABLE_OBJECT_INFO_INIT;
+    romx_error_t detail = {};
+    check(romx_mutable_write_path(container.c_str(), object_namespace,
+        key.c_str(), source.c_str(), options, &object, &detail), detail);
+    return object;
+}
+
+inline void delete_mutable(const std::string &container,
+    romx_mutable_namespace_t object_namespace, const std::string &key)
+{
+    romx_error_t detail = {};
+    check(romx_mutable_delete_path(container.c_str(), object_namespace,
+        key.c_str(), &detail), detail);
 }
 
 } /* namespace romx */

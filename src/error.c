@@ -48,12 +48,12 @@ const char *romx_result_string(romx_result_t result)
     case ROMX_E_INVALID_FLAGS: return "invalid ROMX flags";
     case ROMX_E_RANGE: return "ROMX region is out of range";
     case ROMX_E_OVERLAP: return "ROMX regions overlap";
-    case ROMX_E_BODY_HASH: return "ROMX body SHA-256 mismatch";
+    case ROMX_E_IMMUTABLE_HASH: return "ROMX immutable SHA-256 mismatch";
     case ROMX_E_METADATA_ABSENT: return "ROMX metadata is absent";
     case ROMX_E_METADATA_TOO_LARGE: return "ROMX metadata exceeds the limit";
     case ROMX_E_METADATA_UTF8: return "ROMX metadata is not valid UTF-8";
     case ROMX_E_METADATA_JSON: return "ROMX metadata is not valid JSON";
-    case ROMX_E_METADATA_SCHEMA: return "ROMX metadata does not match schema 0.1.0";
+    case ROMX_E_METADATA_SCHEMA: return "ROMX metadata does not match schema 0.2.0";
     case ROMX_E_COVER_ABSENT: return "ROMX cover is absent";
     case ROMX_E_COVER_TOO_LARGE: return "ROMX cover exceeds the limit";
     case ROMX_E_COVER_PNG: return "ROMX cover is not a valid PNG";
@@ -63,6 +63,17 @@ const char *romx_result_string(romx_result_t result)
     case ROMX_E_ATOMIC_RENAME: return "atomic output replacement failed";
     case ROMX_E_EXISTS: return "output already exists";
     case ROMX_E_UNSUPPORTED: return "operation is not supported for this input";
+    case ROMX_E_INDEX: return "invalid ROMX payload index";
+    case ROMX_E_VIRTUAL_PATH: return "invalid ROMX virtual path";
+    case ROMX_E_ENTRY_NOT_FOUND: return "ROMX virtual entry not found";
+    case ROMX_E_ENTRY_CRC: return "ROMX entry CRC32 mismatch";
+    case ROMX_E_MUTABLE_ABSENT: return "ROMX mutable region is absent";
+    case ROMX_E_MUTABLE_HEADER: return "ROMX mutable header is invalid";
+    case ROMX_E_MUTABLE_ENTRY: return "ROMX mutable object is invalid or absent";
+    case ROMX_E_MUTABLE_DATA_CRC: return "ROMX mutable object CRC32 mismatch";
+    case ROMX_E_MUTABLE_NO_SPACE: return "ROMX mutable region has insufficient space";
+    case ROMX_E_MUTABLE_BUNDLE: return "ROMX mutable bundle is invalid";
+    case ROMX_E_MUTABLE_STATS: return "ROMX mutable statistics JSON is invalid";
     default: return "unknown libromx result";
     }
 }

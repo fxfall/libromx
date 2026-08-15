@@ -7,6 +7,12 @@
 #include <romx/romx.h>
 #include "json_internal.h"
 
+struct romx_mutable_slot {
+    romx_mutable_object_info_t object;
+    uint16_t state;
+    int usable;
+};
+
 struct romx_reader {
     romx_info_t info;
     romx_io_t io;
@@ -15,6 +21,10 @@ struct romx_reader {
     uint64_t max_cover_size;
     uint32_t max_cover_dimension;
     uint32_t io_chunk_size;
+    romx_entry_info_t *entries;
+    struct romx_mutable_slot *mutable_slots;
+    uint32_t mutable_slot_count;
+    romx_mutable_status_t mutable_status;
     romx_result_t (*map_payload)(
         void *user_data,
         romx_region_info_t region,
@@ -86,18 +96,6 @@ romx_result_t romx_metadata_load_internal(
     romx_metadata_t **out_metadata,
     romx_error_t *error);
 
-romx_result_t romx_prepare_metadata(
-    const uint8_t *input,
-    size_t input_size,
-    uint32_t payload_crc32,
-    const char *lookup_crc32_override,
-    int has_cover,
-    uint32_t cover_width,
-    uint32_t cover_height,
-    uint8_t **output,
-    size_t *output_size,
-    romx_error_t *error);
-
 romx_result_t romx_validate_cover_io(
     const romx_io_t *io,
     uint64_t size,
@@ -135,9 +133,22 @@ romx_result_t romx_error_set(
     const char *message);
 
 romx_result_t romx_parse_footer(
-    const uint8_t footer[ROMX_FOOTER_SIZE_0_1_0],
+    const uint8_t footer[ROMX_FOOTER_SIZE],
     uint64_t file_size,
     romx_info_t *info,
+    romx_error_t *error);
+
+romx_result_t romx_validate_metadata_bytes(
+    const uint8_t *bytes,
+    size_t size,
+    romx_error_t *error);
+
+romx_result_t romx_parse_ridx(
+    romx_reader_t *reader,
+    romx_error_t *error);
+
+romx_result_t romx_parse_mutable(
+    romx_reader_t *reader,
     romx_error_t *error);
 
 romx_result_t romx_reader_create(

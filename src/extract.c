@@ -41,6 +41,16 @@ static int valid_extract_options(const romx_extract_options_t *options)
         (options->flags & ~(ROMX_EXTRACT_REPLACE_EXISTING | ROMX_EXTRACT_DURABLE)) == 0U);
 }
 
+static romx_region_info_t entrypoint_region(const romx_reader_t *reader)
+{
+    const romx_entry_info_t *entry =
+        &reader->entries[reader->info.entrypoint_index];
+    romx_region_info_t region;
+    region.offset = entry->data_offset;
+    region.size = entry->data_size;
+    return region;
+}
+
 #if defined(_WIN32)
 static wchar_t *to_wide(const char *path)
 {
@@ -207,6 +217,7 @@ romx_result_t romx_extract_payload_path(const romx_reader_t *reader,
     const char *destination, const romx_extract_options_t *options,
     romx_error_t *error)
 {
+    romx_region_info_t region;
     char *temporary = NULL;
     uint8_t payload_sha256[32];
     romx_extract_flags_t flags = options != NULL ? options->flags : UINT32_C(0);
@@ -217,10 +228,11 @@ romx_result_t romx_extract_payload_path(const romx_reader_t *reader,
             "invalid payload extraction arguments");
     result = romx_validate_required_integrity(reader, error);
     if (result != ROMX_OK) return result;
-    result = romx_hash_region(reader, reader->info.rom,
+    region = entrypoint_region(reader);
+    result = romx_hash_region(reader, region,
         payload_sha256, NULL, error);
     if (result != ROMX_OK) return result;
-    result = write_region_temp(reader, reader->info.rom, payload_sha256,
+    result = write_region_temp(reader, region, payload_sha256,
         destination, flags, &temporary, error);
     if (result != ROMX_OK) return result;
     result = publish_temp(temporary, destination,
@@ -286,12 +298,14 @@ romx_result_t romx_extract_payload_cache(const romx_reader_t *reader,
     char *result_path, uint64_t result_capacity, uint64_t *required_size,
     romx_error_t *error)
 {
-    char hash[65], format[8] = "rom";
+    char hash[65];
+    const char *extension = "rom";
     uint8_t payload_sha256[32];
     char separator;
     size_t directory_length, path_size;
     char *path;
-    uint64_t ignored = 0U;
+    romx_region_info_t region;
+    const char *dot;
     romx_extract_options_t replace = ROMX_EXTRACT_OPTIONS_INIT;
     romx_result_t result;
     if (reader == NULL || directory == NULL || directory[0] == '\0' ||
@@ -301,19 +315,22 @@ romx_result_t romx_extract_payload_cache(const romx_reader_t *reader,
             ROMX_OFFSET_UNKNOWN, "invalid cache extraction arguments");
     result = romx_validate_required_integrity(reader, error);
     if (result != ROMX_OK) return result;
-    result = romx_hash_region(reader, reader->info.rom,
+    region = entrypoint_region(reader);
+    result = romx_hash_region(reader, region,
         payload_sha256, NULL, error);
     if (result != ROMX_OK) return result;
     hash_hex(payload_sha256, hash);
-    (void)romx_reader_get_payload_format(reader, format,
-        sizeof(format), &ignored, NULL);
+    dot = strrchr(reader->entries[reader->info.entrypoint_index].path, '.');
+    if (dot != NULL && dot[1] != '\0' && strlen(dot + 1U) <= 16U) {
+        extension = dot + 1U;
+    }
     directory_length = strlen(directory);
     if (directory_length > SIZE_MAX - (1U + 64U + 1U +
-            strlen(format) + 1U)) {
+            strlen(extension) + 1U)) {
         return romx_error_set(error, ROMX_E_OUT_OF_MEMORY, 0,
             ROMX_OFFSET_UNKNOWN, "cache result path is too long");
     }
-    path_size = directory_length + 1U + 64U + 1U + strlen(format) + 1U;
+    path_size = directory_length + 1U + 64U + 1U + strlen(extension) + 1U;
     *required_size = (uint64_t)path_size;
     if (result_path == NULL || result_capacity < path_size)
         return romx_error_set(error, ROMX_E_BUFFER_TOO_SMALL, 0,
@@ -327,19 +344,19 @@ romx_result_t romx_extract_payload_cache(const romx_reader_t *reader,
     separator = '/';
 #endif
     (void)snprintf(path, path_size, "%s%c%s.%s", directory, separator,
-        hash, format);
+        hash, extension);
 #if defined(_WIN32)
     { wchar_t *wide=to_wide(directory); if (wide==NULL || (_wmkdir(wide)!=0 && errno!=EEXIST)) { free(wide);free(path);return romx_error_set(error,ROMX_E_WRITE,errno,ROMX_OFFSET_UNKNOWN,"failed to create cache directory"); } free(wide); }
 #else
     if (mkdir(directory, 0777) != 0 && errno != EEXIST) { int code=errno;free(path);return romx_error_set(error,ROMX_E_WRITE,code,ROMX_OFFSET_UNKNOWN,"failed to create cache directory"); }
 #endif
-    if (!existing_file_matches(path, reader->info.rom.size, payload_sha256)) {
+    if (!existing_file_matches(path, region.size, payload_sha256)) {
         replace.flags = ROMX_EXTRACT_REPLACE_EXISTING |
             (options != NULL ? (options->flags & ROMX_EXTRACT_DURABLE) : 0U);
-        result = romx_extract_region_verified_path(reader, reader->info.rom,
+        result = romx_extract_region_verified_path(reader, region,
             payload_sha256, path, &replace, error);
         if (result != ROMX_OK && result != ROMX_E_EXISTS) { free(path); return result; }
-        if (!existing_file_matches(path, reader->info.rom.size, payload_sha256)) {
+        if (!existing_file_matches(path, region.size, payload_sha256)) {
             free(path); return romx_error_set(error, ROMX_E_EXTRACT_HASH, 0,
                 ROMX_OFFSET_UNKNOWN, "published cache payload failed verification");
         }

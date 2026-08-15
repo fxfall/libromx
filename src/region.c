@@ -13,12 +13,14 @@ romx_result_t romx_get_region_info(
             ROMX_OFFSET_UNKNOWN, "reader and region info must not be null");
     }
     switch (region) {
-    case ROMX_REGION_ROM: *info = reader->info.rom; break;
+    case ROMX_REGION_PAYLOAD: *info = reader->info.payload; break;
     case ROMX_REGION_METADATA: *info = reader->info.metadata; break;
     case ROMX_REGION_COVER: *info = reader->info.cover; break;
-    case ROMX_REGION_BODY:
+    case ROMX_REGION_PAYLOAD_INDEX: *info = reader->info.payload_index; break;
+    case ROMX_REGION_MUTABLE: *info = reader->info.mutable_region; break;
+    case ROMX_REGION_IMMUTABLE:
         info->offset = UINT64_C(0);
-        info->size = reader->info.body_size;
+        info->size = reader->info.immutable_size;
         break;
     default:
         return romx_error_set(error, ROMX_E_INVALID_ARGUMENT, 0,
