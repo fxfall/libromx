@@ -173,6 +173,8 @@ typedef int32_t romx_result_t;
 #define ROMX_E_MUTABLE_ENTRY           INT32_C(-30)
 #define ROMX_E_MUTABLE_DATA_CRC        INT32_C(-31)
 #define ROMX_E_MUTABLE_NO_SPACE        INT32_C(-32)
+#define ROMX_E_MUTABLE_BUNDLE          INT32_C(-33)
+#define ROMX_E_MUTABLE_STATS           INT32_C(-34)
 
 typedef struct romx_error {
     romx_result_t code;
@@ -262,6 +264,7 @@ typedef struct romx_payload_mapping romx_payload_mapping_t;
 typedef struct romx_payload_file romx_payload_file_t;
 typedef struct romx_vfs_file romx_vfs_file_t;
 typedef struct romx_mutable_file romx_mutable_file_t;
+typedef struct romx_mutable_bundle romx_mutable_bundle_t;
 typedef struct romx_probe romx_probe_t;
 
 typedef struct romx_entry_info {
@@ -529,6 +532,96 @@ typedef struct romx_mutable_write_options {
 #define ROMX_MUTABLE_WRITE_OPTIONS_INIT { \
     (uint32_t)sizeof(romx_mutable_write_options_t), UINT32_C(0), \
     UINT64_C(0), UINT64_C(0), UINT32_C(0), UINT32_C(0) \
+}
+
+/* Interoperable, uncompressed SAVE/CHEAT bundle profile. The outer mutable
+ * object key selects a consumer-defined destination root; bundle entry paths
+ * are normalized UTF-8 paths relative to that root. */
+#define ROMX_MUTABLE_BUNDLE_VERSION UINT16_C(1)
+#define ROMX_MUTABLE_BUNDLE_PATH_CAPACITY UINT32_C(1024)
+#define ROMX_MUTABLE_BUNDLE_DEFAULT_MAX_ENTRIES UINT32_C(4096)
+#define ROMX_MUTABLE_BUNDLE_DEFAULT_MAX_SIZE UINT64_C(134217728)
+
+typedef struct romx_mutable_bundle_path_entry {
+    uint32_t struct_size;
+    uint32_t reserved;
+    const char *relative_path;
+    const char *source_path;
+} romx_mutable_bundle_path_entry_t;
+
+#define ROMX_MUTABLE_BUNDLE_PATH_ENTRY_INIT { \
+    (uint32_t)sizeof(romx_mutable_bundle_path_entry_t), UINT32_C(0), \
+    NULL, NULL \
+}
+
+typedef struct romx_mutable_bundle_options {
+    uint32_t struct_size;
+    uint32_t flags; /* reserved; must be zero */
+    uint32_t max_entry_count;
+    uint32_t max_path_size;
+    uint64_t max_bundle_size;
+    uint32_t io_chunk_size;
+    uint32_t reserved;
+} romx_mutable_bundle_options_t;
+
+#define ROMX_MUTABLE_BUNDLE_OPTIONS_INIT { \
+    (uint32_t)sizeof(romx_mutable_bundle_options_t), UINT32_C(0), \
+    UINT32_C(0), UINT32_C(0), UINT64_C(0), UINT32_C(0), UINT32_C(0) \
+}
+
+typedef struct romx_mutable_bundle_entry_info {
+    uint32_t struct_size;
+    uint32_t index;
+    uint64_t data_size;
+    uint32_t data_crc32;
+    uint32_t path_size;
+    char path[ROMX_MUTABLE_BUNDLE_PATH_CAPACITY + 1U];
+} romx_mutable_bundle_entry_info_t;
+
+#define ROMX_MUTABLE_BUNDLE_ENTRY_INFO_INIT { \
+    (uint32_t)sizeof(romx_mutable_bundle_entry_info_t), UINT32_C(0), \
+    UINT64_C(0), UINT32_C(0), UINT32_C(0), { 0 } \
+}
+
+/* Strict, versioned STATS JSON profile. Every field other than schema/version
+ * is optional and represented by a ROMX_MUTABLE_STATS_HAS_* flag. */
+#define ROMX_MUTABLE_STATS_VERSION UINT32_C(1)
+#define ROMX_MUTABLE_STATS_MAX_JSON_SIZE UINT32_C(16384)
+#define ROMX_MUTABLE_STATS_MAX_SAFE_INTEGER UINT64_C(9007199254740991)
+
+typedef uint32_t romx_mutable_stats_flags_t;
+#define ROMX_MUTABLE_STATS_HAS_PLAY_TIME          UINT32_C(0x00000001)
+#define ROMX_MUTABLE_STATS_HAS_LAUNCH_COUNT       UINT32_C(0x00000002)
+#define ROMX_MUTABLE_STATS_HAS_FIRST_PLAYED       UINT32_C(0x00000004)
+#define ROMX_MUTABLE_STATS_HAS_LAST_PLAYED        UINT32_C(0x00000008)
+#define ROMX_MUTABLE_STATS_HAS_FAVORITE           UINT32_C(0x00000010)
+#define ROMX_MUTABLE_STATS_HAS_COMPLETED          UINT32_C(0x00000020)
+#define ROMX_MUTABLE_STATS_HAS_COMPLETION_PERCENT UINT32_C(0x00000040)
+#define ROMX_MUTABLE_STATS_HAS_ACHIEVEMENTS       UINT32_C(0x00000080)
+#define ROMX_MUTABLE_STATS_HAS_HARDCORE_UNLOCKED  UINT32_C(0x00000100)
+#define ROMX_MUTABLE_STATS_FLAGS_MASK             UINT32_C(0x000001ff)
+
+typedef struct romx_mutable_stats {
+    uint32_t struct_size;
+    romx_mutable_stats_flags_t flags;
+    uint64_t play_time_seconds;
+    uint64_t launch_count;
+    uint64_t first_played_unix_seconds;
+    uint64_t last_played_unix_seconds;
+    uint32_t favorite;
+    uint32_t completed;
+    uint32_t completion_percent;
+    uint32_t reserved;
+    uint64_t achievements_unlocked;
+    uint64_t achievements_total;
+    uint64_t achievements_hardcore_unlocked;
+} romx_mutable_stats_t;
+
+#define ROMX_MUTABLE_STATS_INIT { \
+    (uint32_t)sizeof(romx_mutable_stats_t), UINT32_C(0), \
+    UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0), \
+    UINT32_C(0), UINT32_C(0), UINT32_C(0), UINT32_C(0), \
+    UINT64_C(0), UINT64_C(0), UINT64_C(0) \
 }
 
 ROMX_API const char *romx_result_string(romx_result_t result);
@@ -911,6 +1004,76 @@ ROMX_API romx_result_t romx_mutable_delete_path(
     const char *utf8_romx_path,
     romx_mutable_namespace_t object_namespace,
     const char *key,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_mutable_bundle_write_path_entries(
+    const char *utf8_romx_path,
+    romx_mutable_namespace_t object_namespace,
+    const char *key,
+    const romx_mutable_bundle_path_entry_t *entries,
+    uint32_t entry_count,
+    const romx_mutable_bundle_options_t *bundle_options,
+    const romx_mutable_write_options_t *write_options,
+    romx_mutable_object_info_t *written_object,
+    romx_error_t *error);
+
+/* A bundle borrows its reader. Opening validates the complete bundle,
+ * including every per-file CRC32, before any entry can be exposed. */
+ROMX_API romx_result_t romx_mutable_bundle_open(
+    const romx_reader_t *reader,
+    romx_mutable_namespace_t object_namespace,
+    const char *key,
+    const romx_mutable_bundle_options_t *options,
+    romx_mutable_bundle_t **out_bundle,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_mutable_bundle_get_entry_count(
+    const romx_mutable_bundle_t *bundle,
+    uint32_t *count,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_mutable_bundle_get_entry(
+    const romx_mutable_bundle_t *bundle,
+    uint32_t index,
+    romx_mutable_bundle_entry_info_t *entry,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_mutable_bundle_read_entry(
+    romx_mutable_bundle_t *bundle,
+    uint32_t index,
+    uint64_t entry_offset,
+    void *buffer,
+    uint64_t buffer_size,
+    uint64_t *bytes_read,
+    romx_error_t *error);
+
+ROMX_API void romx_mutable_bundle_close(romx_mutable_bundle_t *bundle);
+
+ROMX_API romx_result_t romx_mutable_stats_parse_json(
+    const void *json,
+    uint64_t json_size,
+    romx_mutable_stats_t *stats,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_mutable_stats_serialize_json(
+    const romx_mutable_stats_t *stats,
+    void *buffer,
+    uint64_t capacity,
+    uint64_t *required_size,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_mutable_stats_read(
+    const romx_reader_t *reader,
+    const char *key,
+    romx_mutable_stats_t *stats,
+    romx_error_t *error);
+
+ROMX_API romx_result_t romx_mutable_stats_write_path(
+    const char *utf8_romx_path,
+    const char *key,
+    const romx_mutable_stats_t *stats,
+    const romx_mutable_write_options_t *options,
+    romx_mutable_object_info_t *written_object,
     romx_error_t *error);
 
 ROMX_API void romx_reader_close(romx_reader_t *reader);

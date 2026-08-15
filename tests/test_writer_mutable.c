@@ -77,6 +77,17 @@ static uint64_t file_size(const char *path)
     return (uint64_t)end;
 }
 
+static int write_bytes(const char *path, const void *bytes, size_t size)
+{
+    FILE *stream = fopen(path, "wb");
+    if (stream == NULL) return 0;
+    if (size != 0U && fwrite(bytes, 1U, size, stream) != size) {
+        fclose(stream);
+        return 0;
+    }
+    return fclose(stream) == 0;
+}
+
 static int test_multi_entry_and_mutable(const char *directory)
 {
     static const uint8_t cue[] =
@@ -114,6 +125,8 @@ static int test_multi_entry_and_mutable(const char *directory)
     uint8_t first[4];
     uint64_t bytes_read;
     unsigned int index;
+    char save_path[1024];
+    char rtc_path[1024];
 
     (void)snprintf(output, sizeof(output), "%s/native-writer.romx", directory);
     (void)unlink(output);
@@ -194,6 +207,111 @@ static int test_multi_entry_and_mutable(const char *directory)
     CHECK(romx_reader_get_mutable_object_count(reader, &count, &error) == ROMX_OK);
     CHECK(count == UINT32_C(0));
     romx_reader_close(reader);
+
+    {
+        static const uint8_t savedata[] = { 1U, 3U, 3U, 7U };
+        static const uint8_t rtcdata[] = { 2U, 4U, 6U, 8U, 10U };
+        romx_mutable_bundle_path_entry_t bundle_entries[2];
+        romx_mutable_bundle_path_entry_t collision_entries[3];
+        romx_mutable_bundle_t *bundle = NULL;
+        romx_mutable_bundle_entry_info_t bundle_entry =
+            ROMX_MUTABLE_BUNDLE_ENTRY_INFO_INIT;
+        romx_mutable_stats_t stats = ROMX_MUTABLE_STATS_INIT;
+        romx_mutable_stats_t restored_stats = ROMX_MUTABLE_STATS_INIT;
+        uint8_t restored[8];
+        uint64_t required = UINT64_C(0);
+        uint8_t stats_json[512];
+
+        (void)snprintf(save_path, sizeof(save_path), "%s/game.srm", directory);
+        (void)snprintf(rtc_path, sizeof(rtc_path), "%s/game.rtc", directory);
+        CHECK(write_bytes(save_path, savedata, sizeof(savedata)));
+        CHECK(write_bytes(rtc_path, rtcdata, sizeof(rtcdata)));
+        bundle_entries[0] =
+            (romx_mutable_bundle_path_entry_t)ROMX_MUTABLE_BUNDLE_PATH_ENTRY_INIT;
+        bundle_entries[0].relative_path = "game.srm";
+        bundle_entries[0].source_path = save_path;
+        bundle_entries[1] =
+            (romx_mutable_bundle_path_entry_t)ROMX_MUTABLE_BUNDLE_PATH_ENTRY_INIT;
+        bundle_entries[1].relative_path = "clock/game.rtc";
+        bundle_entries[1].source_path = rtc_path;
+        mutable_options.data_capacity = UINT64_C(512);
+        CHECK(romx_mutable_bundle_write_path_entries(output,
+            ROMX_MUTABLE_NAMESPACE_SAVE, "libretro", bundle_entries, 2U,
+            NULL, &mutable_options, &object, &error) == ROMX_OK);
+        CHECK(romx_reader_open_path(output, NULL, &reader, &error) == ROMX_OK);
+        CHECK(romx_mutable_bundle_open(reader, ROMX_MUTABLE_NAMESPACE_SAVE,
+            "libretro", NULL, &bundle, &error) == ROMX_OK);
+        CHECK(romx_mutable_bundle_get_entry_count(bundle, &count,
+            &error) == ROMX_OK && count == UINT32_C(2));
+        CHECK(romx_mutable_bundle_get_entry(bundle, 0U, &bundle_entry,
+            &error) == ROMX_OK);
+        CHECK(strcmp(bundle_entry.path, "clock/game.rtc") == 0);
+        CHECK(romx_mutable_bundle_read_entry(bundle, 0U, UINT64_C(0),
+            restored, sizeof(restored), &bytes_read, &error) == ROMX_OK);
+        CHECK(bytes_read == sizeof(rtcdata) &&
+            memcmp(restored, rtcdata, sizeof(rtcdata)) == 0);
+        romx_mutable_bundle_close(bundle);
+        romx_reader_close(reader);
+        reader = NULL;
+
+        stats.flags = ROMX_MUTABLE_STATS_HAS_PLAY_TIME |
+            ROMX_MUTABLE_STATS_HAS_LAUNCH_COUNT |
+            ROMX_MUTABLE_STATS_HAS_FIRST_PLAYED |
+            ROMX_MUTABLE_STATS_HAS_LAST_PLAYED |
+            ROMX_MUTABLE_STATS_HAS_FAVORITE |
+            ROMX_MUTABLE_STATS_HAS_COMPLETION_PERCENT |
+            ROMX_MUTABLE_STATS_HAS_ACHIEVEMENTS |
+            ROMX_MUTABLE_STATS_HAS_HARDCORE_UNLOCKED;
+        stats.play_time_seconds = UINT64_C(12345);
+        stats.launch_count = UINT64_C(9);
+        stats.first_played_unix_seconds = UINT64_C(1000);
+        stats.last_played_unix_seconds = UINT64_C(2000);
+        stats.favorite = UINT32_C(1);
+        stats.completion_percent = UINT32_C(75);
+        stats.achievements_unlocked = UINT64_C(12);
+        stats.achievements_total = UINT64_C(20);
+        stats.achievements_hardcore_unlocked = UINT64_C(4);
+        CHECK(romx_mutable_stats_serialize_json(&stats, stats_json,
+            sizeof(stats_json), &required, &error) == ROMX_OK);
+        CHECK(required > UINT64_C(0));
+        CHECK(romx_mutable_stats_parse_json(stats_json, required,
+            &restored_stats, &error) == ROMX_OK);
+        CHECK(restored_stats.play_time_seconds == stats.play_time_seconds);
+        restored_stats = (romx_mutable_stats_t)ROMX_MUTABLE_STATS_INIT;
+        CHECK(romx_mutable_stats_parse_json(
+            "{\"schema\":\"romx.stats\",\"version\":1,\"unknown\":0}",
+            sizeof("{\"schema\":\"romx.stats\",\"version\":1,\"unknown\":0}") -
+                1U, &restored_stats, &error) ==
+            ROMX_E_MUTABLE_STATS);
+        restored_stats = (romx_mutable_stats_t)ROMX_MUTABLE_STATS_INIT;
+        CHECK(romx_mutable_stats_parse_json(
+            "{\"schema\":\"romx.stats\",\"schema\":\"romx.stats\",\"version\":1}",
+            sizeof("{\"schema\":\"romx.stats\",\"schema\":\"romx.stats\",\"version\":1}") -
+                1U, &restored_stats, &error) ==
+            ROMX_E_MUTABLE_STATS);
+        mutable_options.data_capacity = UINT64_C(512);
+        CHECK(romx_mutable_stats_write_path(output, "default", &stats,
+            &mutable_options, &object, &error) == ROMX_OK);
+        CHECK(romx_reader_open_path(output, NULL, &reader, &error) == ROMX_OK);
+        restored_stats = (romx_mutable_stats_t)ROMX_MUTABLE_STATS_INIT;
+        CHECK(romx_mutable_stats_read(reader, "default", &restored_stats,
+            &error) == ROMX_OK);
+        CHECK(restored_stats.achievements_hardcore_unlocked == UINT64_C(4));
+        romx_reader_close(reader);
+        reader = NULL;
+        collision_entries[0] = bundle_entries[0];
+        collision_entries[0].relative_path = "A/game.srm";
+        collision_entries[1] = bundle_entries[1];
+        collision_entries[1].relative_path = "B/game.rtc";
+        collision_entries[2] = bundle_entries[0];
+        collision_entries[2].relative_path = "a/GAME.SRM";
+        CHECK(romx_mutable_bundle_write_path_entries(output,
+            ROMX_MUTABLE_NAMESPACE_CHEAT, "collision", collision_entries, 3U,
+            NULL, &mutable_options, &object, &error) ==
+            ROMX_E_MUTABLE_BUNDLE);
+        (void)unlink(save_path);
+        (void)unlink(rtc_path);
+    }
     (void)unlink(output);
     return 1;
 }
@@ -261,6 +379,6 @@ int main(int argc, char **argv)
     }
     if (!test_multi_entry_and_mutable(argv[1]) ||
         !test_optional_payload_probe(argv[1])) return 1;
-    puts("ROMX 0.2.0 writer, mutable commit, and probe tests passed");
+    puts("ROMX 0.2.0 writer, mutable bundle/STATS, commit, and probe tests passed");
     return 0;
 }

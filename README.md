@@ -18,6 +18,9 @@ ROMX 0.2.0 is the only wire format implemented by this branch.
 - native multi-entry streaming writer with atomic publication;
 - optional payload probing when metadata or cover is absent;
 - fixed-capacity mutable SAVE, CHEAT, STATS, and PRIVATE objects;
+- deterministic uncompressed SAVE/CHEAT bundles with normalized paths and
+  per-file CRC32;
+- strict versioned STATS JSON parsing, serialization, and explicit commit;
 - durable in-place mutable write, overwrite, and delete commits without moving
   the footer or rewriting immutable game data.
 
@@ -54,7 +57,8 @@ multi-file game, it is normally a descriptor such as CUE, GDI, or M3U.
 - Use `romx_reader_map_payload` when a core accepts one memory buffer.
 - Use `romx_vfs_file_open` to expose every RIDX path requested by a multi-file
   core.
-- Use `romx_mutable_file_open` to restore an explicitly selected object.
+- Use `romx_mutable_bundle_open` for interoperable SAVE/CHEAT file sets.
+- Use `romx_mutable_stats_read` for the strict STATS profile.
 - Use `romx_mutable_write_*` and `romx_mutable_delete_path` only after an
   explicit frontend save/delete action.
 

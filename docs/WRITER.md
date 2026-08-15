@@ -62,3 +62,21 @@ Mutable commits never change file size, move the footer, or recalculate the
 optional immutable SHA-256. Insufficient capacity returns
 `ROMX_E_MUTABLE_NO_SPACE`. An interrupted transaction may quarantine the
 affected slot, but immutable game content remains readable.
+
+## SAVE/CHEAT bundles and STATS
+
+`romx_mutable_bundle_write_path_entries` accepts an explicit list of regular
+source files and normalized relative paths. It sorts paths canonically,
+rejects traversal, case-folding collisions, symlinks and non-regular files,
+and streams an uncompressed `RMBL` object through the existing durable mutable
+transaction. It does not create a tar file or scan a directory.
+
+`romx_mutable_bundle_open` validates the outer object CRC32, bundle header,
+directory, path table, zero padding, and every file CRC32 before exposing
+entries. The bundle borrows its reader.
+
+`romx_mutable_stats_serialize_json` and `romx_mutable_stats_parse_json`
+implement the strict `romx.stats` version 1 schema.
+`romx_mutable_stats_write_path` serializes and commits it in one operation.
+SAVE, CHEAT, STATS, and PRIVATE remain separate mutable objects with independent
+fixed extents; one namespace cannot borrow another object's capacity.

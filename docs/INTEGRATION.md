@@ -48,13 +48,25 @@ does not rehash a multi-gigabyte image.
 
 ## Mutable restore and explicit commit
 
-Use `romx_reader_get_mutable_status` before enumeration. A frontend can copy a
-selected object to the core's expected save/cheat/statistics location with
-`romx_mutable_file_open`.
+Use `romx_reader_get_mutable_status` before enumeration. Opaque objects remain
+available through `romx_mutable_file_open`.
 
-Writing back is a separate explicit action. Call `romx_mutable_write_io_path`
-or `romx_mutable_write_path`; call `romx_mutable_delete_path` for explicit
-deletion. libromx performs the in-place durable transaction, while UI,
+For interoperable SAVE/CHEAT file sets, use `romx_mutable_bundle_open`,
+enumerate with `romx_mutable_bundle_get_entry*`, and stream original file
+bytes with `romx_mutable_bundle_read_entry`. Opening validates the complete
+bundle and all per-file CRC32 values. Extract to staging and commit only the
+listed paths; never replace a shared frontend save root.
+
+Use `romx_mutable_stats_read` and `romx_mutable_stats_serialize_json` for the
+strict versioned STATS profile. Cumulative runtime synchronization should
+re-read the current object and add only the current session delta.
+
+Writing back is a separate explicit action. Call
+`romx_mutable_bundle_write_path_entries` for caller-selected regular files,
+`romx_mutable_stats_write_path` for statistics, or the generic
+`romx_mutable_write_io_path`/`romx_mutable_write_path` APIs for opaque data.
+Call `romx_mutable_delete_path` for explicit deletion. libromx performs the
+in-place durable transaction, while UI,
 destination directories, synchronization policy, and user confirmation remain
 frontend responsibilities. Save states are outside the ROMX 0.2.0 namespaces.
 

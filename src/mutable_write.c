@@ -486,7 +486,16 @@ romx_result_t romx_mutable_write_path(const char *romx_path,
 #endif
     romx_result_t result;
     if (source_path_value == NULL) return ROMX_E_INVALID_ARGUMENT;
+#if defined(_WIN32)
+    {
+        wchar_t *wide = to_wide(source_path_value);
+        source.file = NULL;
+        if (wide != NULL) (void)_wfopen_s(&source.file, wide, L"rb");
+        free(wide);
+    }
+#else
     source.file = fopen(source_path_value, "rb");
+#endif
 #if defined(_WIN32)
     if (source.file == NULL || _fseeki64(source.file, 0, SEEK_END) != 0 ||
         (end = _ftelli64(source.file)) < 0 || _fseeki64(source.file, 0, SEEK_SET) != 0) {

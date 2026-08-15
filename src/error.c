@@ -72,6 +72,8 @@ const char *romx_result_string(romx_result_t result)
     case ROMX_E_MUTABLE_ENTRY: return "ROMX mutable object is invalid or absent";
     case ROMX_E_MUTABLE_DATA_CRC: return "ROMX mutable object CRC32 mismatch";
     case ROMX_E_MUTABLE_NO_SPACE: return "ROMX mutable region has insufficient space";
+    case ROMX_E_MUTABLE_BUNDLE: return "ROMX mutable bundle is invalid";
+    case ROMX_E_MUTABLE_STATS: return "ROMX mutable statistics JSON is invalid";
     default: return "unknown libromx result";
     }
 }

@@ -21,6 +21,8 @@ add_library(romx
     src/json.c
     src/metadata.c
     src/mutable.c
+    src/mutable_bundle.c
+    src/mutable_stats.c
     src/mutable_write.c
     src/payload_view.c
     src/payload_file.c
