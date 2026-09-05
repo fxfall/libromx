@@ -95,27 +95,14 @@ static romx_result_t romx_file_read_at(void *user_data, uint64_t offset,
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#if !defined(__SWITCH__) && !defined(ROMX_DISABLE_MMAP)
+#include "io_posix_internal.h"
+#if !defined(ROMX_NO_MMAP)
 #include <sys/mman.h>
-#endif
-#if !defined(SSIZE_MAX)
-#define SSIZE_MAX ((size_t)(SIZE_MAX >> 1))
 #endif
 
 typedef struct romx_file_io { int descriptor; uint64_t size; } romx_file_io_t;
 
-#if defined(__SWITCH__) || defined(ROMX_DISABLE_MMAP)
-/* Horizon's libc exposes read/lseek but not the POSIX pread symbol. */
-static ssize_t romx_file_pread(int descriptor, void *buffer, size_t size, off_t offset)
-{
-    if (lseek(descriptor, offset, SEEK_SET) == (off_t)-1) return (ssize_t)-1;
-    return read(descriptor, buffer, size);
-}
-#else
-#define romx_file_pread pread
-#endif
-
-#if !defined(__SWITCH__) && !defined(ROMX_DISABLE_MMAP)
+#if !defined(ROMX_NO_MMAP)
 static int romx_file_pread_exact(
     int descriptor, uint64_t offset, uint8_t *buffer, size_t size,
     size_t *bytes_read, int *system_code)
@@ -333,8 +320,8 @@ static romx_result_t romx_file_read_at(void *user_data, uint64_t offset,
         ROMX_E_RANGE, 0, offset, "file offset exceeds platform limit");
     while (*bytes_read < size) {
         uint64_t remaining = size - *bytes_read;
-        size_t count = remaining > (uint64_t)SIZE_MAX ? SIZE_MAX : (size_t)remaining;
-        ssize_t actual = romx_file_pread(state->descriptor, output + (size_t)*bytes_read,
+        size_t count = romx_posix_io_count(remaining);
+        ssize_t actual = romx_posix_pread(state->descriptor, output + (size_t)*bytes_read,
             count, (off_t)(offset + *bytes_read));
         if (actual < 0) {
             if (errno == EINTR) continue;
@@ -397,7 +384,7 @@ romx_result_t romx_reader_open_path(const char *utf8_path,
     io.user_data = state; io.get_size = romx_file_get_size; io.read_at = romx_file_read_at;
     result = romx_reader_create(&io, options, romx_file_close, out_reader, error);
     if (result != ROMX_OK) romx_file_close(state);
-#if !defined(_WIN32) && !defined(__SWITCH__) && !defined(ROMX_DISABLE_MMAP)
+#if !defined(_WIN32) && !defined(ROMX_NO_MMAP)
     else (*out_reader)->map_payload = romx_file_map_payload;
 #endif
     return result;

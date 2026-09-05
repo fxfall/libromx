@@ -90,32 +90,6 @@ jobs:
         run: |
           "${{ github.workspace }}\build\Release" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Trace Windows phase1 test
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          ROMX_TEST_TRACE: "1"
-        run: |
-          $test = Join-Path $env:GITHUB_WORKSPACE "build\tests\Release\romx_phase1_tests.exe"
-          $stdout = Join-Path $env:RUNNER_TEMP "romx-phase1.stdout.log"
-          $stderr = Join-Path $env:RUNNER_TEMP "romx-phase1.stderr.log"
-          Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
-          $process = Start-Process -FilePath $test `
-            -WorkingDirectory (Split-Path -Parent $test) `
-            -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
-          if (-not $process.WaitForExit(60000)) {
-            $process.Kill()
-            $process.WaitForExit()
-            if (Test-Path $stdout) { Get-Content $stdout }
-            if (Test-Path $stderr) { Get-Content $stderr }
-            throw "romx.phase1 did not finish within 60 seconds"
-          }
-          if (Test-Path $stdout) { Get-Content $stdout }
-          if (Test-Path $stderr) { Get-Content $stderr }
-          if ($process.ExitCode -ne 0) {
-            throw "romx.phase1 exited with code $($process.ExitCode)"
-          }
-
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure --no-tests=error --timeout 120
 

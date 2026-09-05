@@ -14,6 +14,7 @@ set(ROMX_CONFORMANCE_FIXTURE_DIR
 
 add_library(romx
     src/crc32.c
+    src/durability.c
     src/error.c
     src/extract.c
     src/footer.c
@@ -32,6 +33,7 @@ add_library(romx
     src/region.c
     src/reader.c
     src/registry.c
+    src/save_manager.c
     src/sha256.c
     src/validate.c
     src/vfs_file.c
@@ -82,6 +84,18 @@ install(FILES
     README.md
     docs/INTEGRATION.md
     docs/WRITER.md
+    docs/SAVE-MANAGER.md
+    docs/ROMX-0.2.0-PROVENANCE.md
+    docs/ROMX-0.2.0-OPEN-ITEMS-RESOLVED.md
+    docs/ROMX-0.2.0-Technical-Spec-Draft.md
+    docs/ROMX-0.2.0-技术规格草案.md
+    "docs/ROMX-0.2.0-来源冻结.md"
+    "docs/ROMX-0.2.0-待确认事项已决.md"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}
+)
+install(FILES
+    docs/ROMX-0.2.0-Technical-Spec.canvas
+    "docs/ROMX-0.2.0-技术规格图.canvas"
     DESTINATION ${CMAKE_INSTALL_DOCDIR}
 )
 install(FILES
