@@ -8,6 +8,7 @@
 #if defined(_WIN32)
 #include <direct.h>
 #include <io.h>
+#include <process.h>
 #define get_process_id _getpid
 #define make_directory(path) _mkdir(path)
 #define remove_directory(path) _rmdir(path)
