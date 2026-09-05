@@ -452,6 +452,13 @@ typedef uint32_t romx_writer_flags_t;
 #define ROMX_WRITER_REPLACE_EXISTING UINT32_C(0x00000002)
 #define ROMX_WRITER_DURABLE          UINT32_C(0x00000004)
 #define ROMX_WRITER_PROBE_PAYLOAD    UINT32_C(0x00000008)
+/* Compute the entrypoint CRC while streaming and replace the fixed-width
+ * `00000000` metadata placeholder before the metadata region is written. */
+#define ROMX_WRITER_COMPUTE_METADATA_CRC32 UINT32_C(0x00000010)
+/* Write directly to a caller-owned temporary path. This is intended for
+ * frontends that already use a `.tmp` transaction and must remove the path
+ * if any subsequent post-write step fails. */
+#define ROMX_WRITER_DIRECT_OUTPUT    UINT32_C(0x00000020)
 
 typedef struct romx_writer_io_entry {
     uint32_t struct_size;
@@ -1225,6 +1232,28 @@ ROMX_API romx_result_t romx_mutable_write_path(
     romx_mutable_object_info_t *written_object,
     romx_error_t *error);
 
+/* Measures the complete serialized RMBL bundle produced from path entries.
+ * The result includes the bundle header, entry table, path table, alignment,
+ * and file data. Source files are opened and read for validation, but the
+ * ROMX container is not modified. */
+ROMX_API romx_result_t romx_mutable_bundle_measure_path_entries(
+    romx_mutable_namespace_t object_namespace,
+    const romx_mutable_bundle_path_entry_t *entries,
+    uint32_t entry_count,
+    const romx_mutable_bundle_options_t *bundle_options,
+    uint64_t *serialized_size,
+    romx_error_t *error);
+
+/* Copy a complete mutable region from an existing ROMX container into a
+ * newly-created destination container.  Both containers must have the same
+ * non-zero mutable capacity and valid boundaries.  The copy is byte-for-byte
+ * and therefore preserves every namespace, object key, generation, and
+ * unknown object without interpreting the mutable directory in the caller. */
+ROMX_API romx_result_t romx_mutable_copy_region_path(
+    const char *utf8_source_romx_path,
+    const char *utf8_destination_romx_path,
+    romx_error_t *error);
+
 ROMX_API romx_result_t romx_mutable_delete_path(
     const char *utf8_romx_path,
     romx_mutable_namespace_t object_namespace,
@@ -1295,6 +1324,15 @@ ROMX_API romx_result_t romx_save_catalog_copy_candidate_source_path(
     void *buffer,
     uint64_t capacity,
     uint64_t *required_size,
+    romx_error_t *error);
+
+/* Measures the complete RMBL bundle that would be written for one SAVE
+ * candidate, including any PSP or 3DS ExtData path normalization. */
+ROMX_API romx_result_t romx_save_catalog_measure_candidate(
+    const romx_save_catalog_t *catalog,
+    uint32_t candidate_index,
+    const romx_mutable_bundle_options_t *bundle_options,
+    uint64_t *serialized_size,
     romx_error_t *error);
 
 /* Converts one catalog candidate into an RMBL object in the SAVE namespace.

@@ -242,6 +242,77 @@ static int test_3ds_single_files(const char *root)
     return 1;
 }
 
+static int test_3ds_root_files_single_slot(const char *root)
+{
+    char source[1024];
+    char first_path[1024];
+    char second_path[1024];
+    char romx_path[1024];
+    static const uint8_t first[] = { 0x11U, 0x12U };
+    static const uint8_t second[] = { 0x21U, 0x22U, 0x23U };
+    romx_save_scan_options_t options = ROMX_SAVE_SCAN_OPTIONS_INIT;
+    romx_mutable_object_info_t object = ROMX_MUTABLE_OBJECT_INFO_INIT;
+    romx_save_catalog_t *catalog = NULL;
+    romx_reader_t *reader = NULL;
+    romx_mutable_bundle_t *bundle = NULL;
+    romx_mutable_save_slot_info_t slot = ROMX_MUTABLE_SAVE_SLOT_INFO_INIT;
+    romx_mutable_bundle_path_entry_t measure_entries[2];
+    romx_error_t error;
+    uint32_t count;
+    uint64_t measured_size;
+    uint64_t direct_measured_size;
+
+    CHECK(join_path(source, sizeof(source), root, "3ds-root-files"));
+    CHECK(join_path(romx_path, sizeof(romx_path), root,
+        "3ds-root-files.romx"));
+    CHECK(make_dir(source));
+    CHECK(join_path(first_path, sizeof(first_path), source, "save00.bin"));
+    CHECK(write_bytes(first_path, first, sizeof(first)));
+    CHECK(join_path(second_path, sizeof(second_path), source, "system.dat"));
+    CHECK(write_bytes(second_path, second, sizeof(second)));
+
+    options.platform_id = ROMX_PLATFORM_NINTENDO_3DS;
+    options.format_id = ROMX_FORMAT_N3DS;
+    CHECK(romx_save_catalog_open_path(source, &options, &catalog, &error) ==
+        ROMX_OK);
+    CHECK(romx_save_catalog_get_candidate_count(catalog, &count, &error) ==
+        ROMX_OK && count == UINT32_C(1));
+    CHECK(check_candidate(catalog, 0U, "3ds-root-files", 2U, 1,
+        ROMX_SAVE_SOURCE_3DS_BACKUP));
+    CHECK(romx_save_catalog_measure_candidate(catalog, 0U, NULL,
+        &measured_size, &error) == ROMX_OK && measured_size > UINT64_C(0));
+    measure_entries[0] = (romx_mutable_bundle_path_entry_t)
+        ROMX_MUTABLE_BUNDLE_PATH_ENTRY_INIT;
+    measure_entries[0].relative_path = "save00.bin";
+    measure_entries[0].source_path = first_path;
+    measure_entries[1] = (romx_mutable_bundle_path_entry_t)
+        ROMX_MUTABLE_BUNDLE_PATH_ENTRY_INIT;
+    measure_entries[1].relative_path = "system.dat";
+    measure_entries[1].source_path = second_path;
+    CHECK(romx_mutable_bundle_measure_path_entries(
+        ROMX_MUTABLE_NAMESPACE_SAVE, measure_entries, 2U, NULL,
+        &direct_measured_size, &error) == ROMX_OK &&
+        direct_measured_size == measured_size);
+    CHECK(create_test_romx(romx_path));
+    CHECK(romx_save_catalog_write_candidate(catalog, 0U, romx_path, NULL,
+        NULL, NULL, &object, &error) == ROMX_OK);
+    CHECK(object.data_size == measured_size);
+    romx_save_catalog_close(catalog);
+    catalog = NULL;
+
+    CHECK(romx_reader_open_path(romx_path, NULL, &reader, &error) == ROMX_OK);
+    CHECK(romx_mutable_bundle_open(reader, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "3ds-root-files", NULL, &bundle, &error) == ROMX_OK);
+    CHECK(romx_mutable_bundle_get_save_slot_count(bundle, &count, &error) ==
+        ROMX_OK && count == UINT32_C(1));
+    CHECK(romx_mutable_bundle_get_save_slot(bundle, 0U, &slot, &error) ==
+        ROMX_OK && strcmp(slot.key, "3ds-root-files") == 0 &&
+        slot.entry_count == UINT32_C(2));
+    romx_mutable_bundle_close(bundle);
+    romx_reader_close(reader);
+    return 1;
+}
+
 static int test_gateway_identity(const char *root)
 {
     char path[1024];
@@ -468,6 +539,14 @@ static int test_3ds_flat_citra_directory(const char *root)
     CHECK(romx_mutable_bundle_get_save_layout(bundle, &layout, &error) ==
         ROMX_OK && layout.scope == ROMX_SAVE_SCOPE_3DS_TITLE &&
         layout.extdata_id_size == 0U);
+    CHECK(romx_mutable_bundle_get_save_slot_count(bundle, &count, &error) ==
+        ROMX_OK && count == UINT32_C(1));
+    {
+        romx_mutable_save_slot_info_t slot = ROMX_MUTABLE_SAVE_SLOT_INFO_INIT;
+        CHECK(romx_mutable_bundle_get_save_slot(bundle, 0U, &slot, &error) ==
+            ROMX_OK && strcmp(slot.key, "3ds-citra-flat") == 0 &&
+            slot.entry_count == UINT32_C(1));
+    }
     CHECK(romx_mutable_bundle_get_entry(bundle, 0U, &entry, &error) == ROMX_OK &&
         strcmp(entry.path, "saveData.bin") == 0);
     romx_mutable_bundle_close(bundle);
@@ -595,7 +674,7 @@ static int test_3ds_extdata_scope_and_write(const char *root)
         CHECK(romx_mutable_bundle_get_save_slot_count(bundle, &slot_count,
             &error) == ROMX_OK && slot_count == 1U);
         CHECK(romx_mutable_bundle_get_save_slot(bundle, 0U, &slot, &error) ==
-            ROMX_OK && strcmp(slot.key, "000016E1") == 0 &&
+            ROMX_OK && strcmp(slot.key, "mhr-extdata") == 0 &&
             slot.entry_count == 4U);
         for (uint32_t index = 0U; index < count; ++index) {
             bundle_entry = (romx_mutable_bundle_entry_info_t)
@@ -631,6 +710,14 @@ static int test_3ds_extdata_scope_and_write(const char *root)
         ROMX_OK && layout.scope == ROMX_SAVE_SCOPE_3DS_EXTDATA &&
         (layout.flags & ROMX_MUTABLE_SAVE_LAYOUT_STRICT_EXTDATA) == 0U &&
         strcmp(layout.extdata_id, "00000000000016E1") == 0);
+    CHECK(romx_mutable_bundle_get_save_slot_count(bundle, &count, &error) ==
+        ROMX_OK && count == UINT32_C(1));
+    {
+        romx_mutable_save_slot_info_t slot = ROMX_MUTABLE_SAVE_SLOT_INFO_INIT;
+        CHECK(romx_mutable_bundle_get_save_slot(bundle, 0U, &slot, &error) ==
+            ROMX_OK && strcmp(slot.key, "native-extdata") == 0 &&
+            slot.entry_count == UINT32_C(2));
+    }
     CHECK(romx_mutable_bundle_get_entry(bundle, 0U, &bundle_entry, &error) ==
         ROMX_OK && strcmp(bundle_entry.path,
             "extdata/00000000/000016e1/user/mhr_game0.sav") == 0);
@@ -762,6 +849,14 @@ static int test_write_and_3ds_slots(const char *root)
         "profile-1", NULL, &bundle, &error) == ROMX_OK);
     CHECK(romx_mutable_bundle_get_entry_count(bundle, &count, &error) ==
         ROMX_OK && count == 4U);
+    CHECK(romx_mutable_bundle_get_save_slot_count(bundle, &count, &error) ==
+        ROMX_OK && count == UINT32_C(1));
+    {
+        romx_mutable_save_slot_info_t slot = ROMX_MUTABLE_SAVE_SLOT_INFO_INIT;
+        CHECK(romx_mutable_bundle_get_save_slot(bundle, 0U, &slot, &error) ==
+            ROMX_OK && strcmp(slot.key, "profile-1") == 0 &&
+            slot.entry_count == UINT32_C(4));
+    }
     {
         uint32_t index;
         for (index = 0U; index < count; ++index) {
@@ -795,6 +890,9 @@ static void cleanup_fixture(const char *root)
         "3ds-directories/save-2/Data0",
         "3ds-single-files/slot-1.sav",
         "3ds-single-files/slot-2.sav",
+        "3ds-root-files/save00.bin",
+        "3ds-root-files/system.dat",
+        "3ds-root-files.romx",
         "0004000000078B00.sav",
         "3ds-special/game-a/20150101010101/export.log",
         "3ds-special/game-a/20150101010101/000015d8.dat",
@@ -846,6 +944,7 @@ static void cleanup_fixture(const char *root)
         "3ds-special/azahar/sdmc/Nintendo 3DS",
         "3ds-special/azahar/sdmc", "3ds-special/azahar",
         "3ds-special/gateway-game", "3ds-special/dlc", "3ds-special",
+        "3ds-root-files",
         "3ds-citra-flat",
         "3ds-extdata/citra/extdata/00000000/000016e1/user",
         "3ds-extdata/citra/extdata/00000000/000016e1",
@@ -886,6 +985,7 @@ int main(int argc, char **argv)
     }
     if (!test_3ds_directory_grouping(root) ||
         !test_3ds_single_files(root) ||
+        !test_3ds_root_files_single_slot(root) ||
         !test_gateway_identity(root) ||
         !test_3ds_special_directories(root) ||
         !test_3ds_flat_citra_directory(root) ||

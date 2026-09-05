@@ -77,6 +77,11 @@ optional immutable SHA-256. Insufficient capacity returns
 `ROMX_E_MUTABLE_NO_SPACE`. An interrupted transaction may quarantine the
 affected slot, but immutable game content remains readable.
 
+The bundle writer uses the exact serialized RMBL size it already computed to
+request an object capacity with a 25% growth margin (at least 1 KiB) when
+`data_capacity` is zero. Replacements still reuse the existing fixed extent;
+the request is only an allocation hint for a new object.
+
 ## SAVE/CHEAT bundles and STATS
 
 `romx_mutable_bundle_write_path_entries` accepts an explicit list of regular

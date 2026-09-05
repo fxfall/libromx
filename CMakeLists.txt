@@ -23,6 +23,7 @@ add_library(romx
     src/metadata.c
     src/mutable.c
     src/mutable_bundle.c
+    src/mutable_copy.c
     src/mutable_stats.c
     src/mutable_write.c
     src/payload_view.c

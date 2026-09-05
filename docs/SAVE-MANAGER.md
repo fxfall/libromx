@@ -32,7 +32,11 @@ format:
 The profile is based on the ROM type, not on whether a directory happens to
 contain one or many files. This is what lets a 3DS `save00.bin`/`system.dat`
 directory remain one save while two single-file saves in the same collection
-remain two saves.
+remain two saves. After an RMBL object is opened, its logical SAVE-slot
+projection follows the same rule: a normal 3DS object is one slot when it has
+root files or one top-level directory. The old split-by-top-level-directory
+behavior is retained only for legacy objects that clearly contain multiple
+directory roots and no root files.
 
 ## Scan and write
 
@@ -74,6 +78,37 @@ or image files are not silently dropped from an otherwise recognized save.
 SAVE namespace. Each call writes one logical candidate, so a frontend can map
 each 3DS candidate to its own SAVE object/folder without flattening several
 saves into one file set.
+
+For a 3DS RMBL object, use `romx_mutable_bundle_get_save_slot*` after opening
+the object. A single-object slot uses the mutable object key as its stable
+slot key; this keeps a user-selected label independent from path heuristics.
+Strict SaveDataFiler ExtData and canonical ExtData are also each exposed as one
+slot. Gateway single-file saves remain one slot.
+
+Before allocating or writing a mutable object, callers can use
+`romx_save_catalog_measure_candidate` to obtain the exact serialized RMBL
+size. It includes the header, entry table, path table, alignment, and all file
+data. `romx_mutable_bundle_measure_path_entries` provides the same measurement
+for already normalized path entries. Both APIs validate and read their source
+files but do not modify a ROMX container.
+
+## Lossless mutable-region copy
+
+`romx_mutable_copy_region_path(source, destination, &error)` copies the
+complete mutable region from one ROMX 0.2.0 container to another. Both files
+must have a valid mutable directory and exactly the same mutable capacity. The
+source is streamed directly into the destination, so the caller never needs a
+buffer the size of the region. Immutable bytes are not touched and the copy
+does not interpret namespace payloads; unknown namespaces and inactive slots
+are therefore preserved byte-for-byte. The function validates the source and
+destination before opening the destination sink, and rejects a capacity
+mismatch without modifying the destination.
+
+Use this API when a frontend edits metadata or cover data while retaining an
+existing SAVE/CHEAT/STATS/private area. A newly-created destination should be
+written with the same `mutable_capacity` first, then passed to the copy call;
+normal SAVE candidates can be added afterwards with
+`romx_save_catalog_write_candidate`.
 
 ## 3DS save scopes
 

@@ -5,6 +5,7 @@
 
 #include <romx/romx.h>
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,12 @@ typedef struct memory_source {
     const uint8_t *bytes;
     uint64_t size;
 } memory_source_t;
+
+typedef struct failing_memory_source {
+    memory_source_t memory;
+    uint32_t read_count;
+    uint32_t fail_after;
+} failing_memory_source_t;
 
 #define CHECK(expression) do { \
     if (!(expression)) { \
@@ -63,6 +70,134 @@ static romx_io_t memory_io(memory_source_t *source)
     return io;
 }
 
+static romx_result_t failing_memory_get_size(void *user_data,
+    uint64_t *size, romx_error_t *error)
+{
+    failing_memory_source_t *source = (failing_memory_source_t *)user_data;
+    return memory_get_size(&source->memory, size, error);
+}
+
+static romx_result_t failing_memory_read_at(void *user_data, uint64_t offset,
+    void *buffer, uint64_t size, uint64_t *bytes_read, romx_error_t *error)
+{
+    failing_memory_source_t *source = (failing_memory_source_t *)user_data;
+    if (source->read_count++ >= source->fail_after) {
+        if (bytes_read != NULL) *bytes_read = UINT64_C(0);
+        return ROMX_E_IO;
+    }
+    return memory_read_at(&source->memory, offset, buffer, size,
+        bytes_read, error);
+}
+
+static romx_io_t failing_memory_io(failing_memory_source_t *source)
+{
+    romx_io_t io = ROMX_IO_INIT;
+    io.user_data = source;
+    io.get_size = failing_memory_get_size;
+    io.read_at = failing_memory_read_at;
+    return io;
+}
+
+static uint32_t test_crc32_with_zero_field(const uint8_t *bytes, size_t size,
+    size_t field_offset)
+{
+    uint32_t crc = UINT32_C(0xffffffff);
+    size_t index;
+    for (index = 0U; index < size; ++index) {
+        uint8_t value = (index >= field_offset && index < field_offset + 4U)
+            ? 0U : bytes[index];
+        uint32_t bit;
+        crc ^= value;
+        for (bit = 0U; bit < 8U; ++bit)
+            crc = (crc >> 1U) ^ ((crc & 1U) != 0U
+                ? UINT32_C(0xedb88320) : UINT32_C(0));
+    }
+    return ~crc;
+}
+
+static uint16_t test_read_le16(const uint8_t *bytes)
+{
+    return (uint16_t)bytes[0] | (uint16_t)((uint16_t)bytes[1] << 8U);
+}
+
+static void test_write_le16(uint8_t *bytes, uint16_t value)
+{
+    bytes[0] = (uint8_t)value;
+    bytes[1] = (uint8_t)(value >> 8U);
+}
+
+static void test_write_le32(uint8_t *bytes, uint32_t value)
+{
+    bytes[0] = (uint8_t)value;
+    bytes[1] = (uint8_t)(value >> 8U);
+    bytes[2] = (uint8_t)(value >> 16U);
+    bytes[3] = (uint8_t)(value >> 24U);
+}
+
+static int read_file_at(const char *path, uint64_t offset, void *buffer,
+    size_t size)
+{
+    FILE *stream = fopen(path, "rb");
+    int success = 0;
+    if (stream == NULL) return 0;
+#if defined(_WIN32)
+    if (offset <= (uint64_t)INT64_MAX &&
+        _fseeki64(stream, (__int64)offset, SEEK_SET) == 0 &&
+        fread(buffer, 1U, size, stream) == size) success = 1;
+#else
+    if (offset <= (uint64_t)INT64_MAX &&
+        fseeko(stream, (off_t)offset, SEEK_SET) == 0 &&
+        fread(buffer, 1U, size, stream) == size) success = 1;
+#endif
+    fclose(stream);
+    return success;
+}
+
+static int write_file_at(const char *path, uint64_t offset,
+    const void *buffer, size_t size)
+{
+    FILE *stream = fopen(path, "r+b");
+    int success = 0;
+    if (stream == NULL) return 0;
+#if defined(_WIN32)
+    if (offset <= (uint64_t)INT64_MAX &&
+        _fseeki64(stream, (__int64)offset, SEEK_SET) == 0 &&
+        fwrite(buffer, 1U, size, stream) == size) success = 1;
+#else
+    if (offset <= (uint64_t)INT64_MAX &&
+        fseeko(stream, (off_t)offset, SEEK_SET) == 0 &&
+        fwrite(buffer, 1U, size, stream) == size) success = 1;
+#endif
+    if (fclose(stream) != 0) success = 0;
+    return success;
+}
+
+static int patch_mutable_slot_state(const char *path, uint64_t mutable_offset,
+    uint32_t slot_index, uint16_t state)
+{
+    uint8_t entry[512];
+    uint64_t offset = mutable_offset + UINT64_C(4096) +
+        (uint64_t)slot_index * UINT64_C(512);
+    if (!read_file_at(path, offset, entry, sizeof(entry))) return 0;
+    test_write_le16(entry + 0x04U, state);
+    memset(entry + 0x3cU, 0, 4U);
+    test_write_le32(entry + 0x3cU,
+        test_crc32_with_zero_field(entry, sizeof(entry), 0x3cU));
+    return write_file_at(path, offset, entry, sizeof(entry));
+}
+
+static int read_mutable_slot_state(const char *path, uint64_t mutable_offset,
+    uint32_t slot_index, uint16_t *state)
+{
+    uint8_t entry[512];
+    uint64_t offset = mutable_offset + UINT64_C(4096) +
+        (uint64_t)slot_index * UINT64_C(512);
+    if (state == NULL || !read_file_at(path, offset, entry, sizeof(entry)))
+        return 0;
+    *state = test_read_le16(entry + 0x04U);
+    return 1;
+}
+
 static uint64_t file_size(const char *path)
 {
     FILE *stream = fopen(path, "rb");
@@ -91,6 +226,134 @@ static int write_bytes(const char *path, const void *bytes, size_t size)
         return 0;
     }
     return fclose(stream) == 0;
+}
+
+static int create_mutable_test_container_with_capacity(const char *path,
+    uint64_t mutable_capacity)
+{
+    static const uint8_t payload[] = { 0x47U, 0x42U, 0x41U, 0x00U };
+    memory_source_t source = { payload, sizeof(payload) };
+    romx_io_t io = memory_io(&source);
+    romx_writer_io_entry_t entry = ROMX_WRITER_IO_ENTRY_INIT;
+    romx_writer_options_t options = ROMX_WRITER_OPTIONS_INIT;
+    romx_error_t error;
+
+    entry.flags = ROMX_RIDX_ENTRYPOINT | ROMX_RIDX_HAS_CRC32;
+    entry.virtual_path = "game.gba";
+    entry.source = &io;
+    entry.format_id = ROMX_FORMAT_GBA;
+    options.flags = ROMX_WRITER_REPLACE_EXISTING | ROMX_WRITER_DURABLE;
+    options.platform_id = ROMX_PLATFORM_GAME_BOY_ADVANCE;
+    options.launch_format_id = ROMX_LAUNCH_RAW_SINGLE_FILE;
+    options.mutable_capacity = mutable_capacity;
+    options.mutable_entry_capacity = UINT32_C(8);
+    return romx_writer_write_io_entries(path, &entry, 1U, NULL, 0U, NULL,
+        &options, NULL, &error) == ROMX_OK;
+}
+
+static int create_mutable_test_container(const char *path)
+{
+    return create_mutable_test_container_with_capacity(path,
+        UINT64_C(12288));
+}
+
+static int test_mutable_write_retry_after_failure(const char *directory)
+{
+    static const uint8_t retry_data[] = { 'r', 'e', 't', 'r', 'y' };
+    static const uint8_t oversized_data[65] = { 0 };
+    failing_memory_source_t failing = { { retry_data, sizeof(retry_data) }, 0U, 1U };
+    memory_source_t retry_memory = { retry_data, sizeof(retry_data) };
+    memory_source_t oversized_memory = { oversized_data, sizeof(oversized_data) };
+    romx_io_t failing_io = failing_memory_io(&failing);
+    romx_io_t retry_io = memory_io(&retry_memory);
+    romx_io_t oversized_io = memory_io(&oversized_memory);
+    romx_mutable_write_options_t options = ROMX_MUTABLE_WRITE_OPTIONS_INIT;
+    romx_mutable_object_info_t object = ROMX_MUTABLE_OBJECT_INFO_INIT;
+    romx_mutable_object_info_t restored_object = ROMX_MUTABLE_OBJECT_INFO_INIT;
+    romx_reader_t *reader = NULL;
+    romx_info_t info = ROMX_INFO_INIT;
+    romx_mutable_status_t status;
+    romx_mutable_file_t *file = NULL;
+    romx_error_t error;
+    char output[1024];
+    uint32_t count;
+    uint16_t state;
+    uint8_t restored[sizeof(retry_data)];
+    uint64_t bytes_read;
+
+    (void)snprintf(output, sizeof(output), "%s/mutable-retry.romx", directory);
+    (void)unlink(output);
+    CHECK(create_mutable_test_container(output));
+    options.data_capacity = UINT64_C(64);
+    options.io_chunk_size = UINT32_C(1024);
+
+    /* The first read is the CRC pass; the second read is the actual write. */
+    CHECK(romx_mutable_write_io_path(output, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "retry/save.sav", &failing_io, &options, &object, &error) == ROMX_E_IO);
+    CHECK(romx_reader_open_path(output, NULL, &reader, &error) == ROMX_OK);
+    CHECK(romx_reader_get_info(reader, &info, &error) == ROMX_OK);
+    CHECK(romx_reader_get_mutable_status(reader, &status, &error) == ROMX_OK &&
+        status == ROMX_MUTABLE_VALID);
+    CHECK(romx_reader_get_mutable_object_count(reader, &count, &error) == ROMX_OK &&
+        count == UINT32_C(0));
+    CHECK(read_mutable_slot_state(output, info.mutable_region.offset, 0U,
+        &state) && state == UINT16_C(2));
+    romx_reader_close(reader);
+    reader = NULL;
+
+    CHECK(romx_mutable_write_io_path(output, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "retry/save.sav", &retry_io, &options, &object, &error) == ROMX_OK);
+    CHECK(object.slot_index == UINT32_C(0) &&
+        object.data_capacity == UINT64_C(64));
+    CHECK(romx_reader_open_path(output, NULL, &reader, &error) == ROMX_OK);
+    CHECK(romx_reader_get_mutable_object_count(reader, &count, &error) == ROMX_OK &&
+        count == UINT32_C(1));
+    CHECK(romx_reader_find_mutable_object(reader, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "RETRY/SAVE.SAV", &restored_object, &error) == ROMX_OK &&
+        restored_object.slot_index == UINT32_C(0) &&
+        restored_object.data_crc32 == object.data_crc32);
+    CHECK(romx_mutable_file_open(reader, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "retry/save.sav", &file, &error) == ROMX_OK);
+    CHECK(romx_mutable_file_read(file, restored, sizeof(restored),
+        &bytes_read, &error) == ROMX_OK && bytes_read == sizeof(restored) &&
+        memcmp(restored, retry_data, sizeof(restored)) == 0);
+    romx_mutable_file_close(file);
+    file = NULL;
+    romx_reader_close(reader);
+    reader = NULL;
+
+    /* A failed retry must keep the same WRITING slot when the payload grows. */
+    failing.read_count = 0U;
+    CHECK(romx_mutable_write_io_path(output, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "retry/save.sav", &failing_io, &options, &object, &error) == ROMX_E_IO);
+    CHECK(romx_mutable_write_io_path(output, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "retry/save.sav", &oversized_io, &options, &object, &error) ==
+        ROMX_E_MUTABLE_NO_SPACE);
+    CHECK(romx_reader_open_path(output, NULL, &reader, &error) == ROMX_OK);
+    CHECK(romx_reader_get_info(reader, &info, &error) == ROMX_OK);
+    CHECK(romx_reader_get_mutable_object_count(reader, &count, &error) == ROMX_OK &&
+        count == UINT32_C(0));
+    CHECK(read_mutable_slot_state(output, info.mutable_region.offset, 0U,
+        &state) && state == UINT16_C(2));
+    romx_reader_close(reader);
+    reader = NULL;
+
+    CHECK(romx_mutable_write_io_path(output, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "retry/save.sav", &retry_io, &options, &object, &error) == ROMX_OK);
+    CHECK(romx_reader_open_path(output, NULL, &reader, &error) == ROMX_OK);
+    CHECK(romx_reader_get_info(reader, &info, &error) == ROMX_OK);
+    romx_reader_close(reader);
+    reader = NULL;
+    CHECK(patch_mutable_slot_state(output, info.mutable_region.offset, 0U,
+        UINT16_C(3)));
+    CHECK(romx_mutable_delete_path(output, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "retry/save.sav", &error) == ROMX_OK);
+    CHECK(romx_reader_open_path(output, NULL, &reader, &error) == ROMX_OK);
+    CHECK(romx_reader_get_mutable_object_count(reader, &count, &error) == ROMX_OK &&
+        count == UINT32_C(0));
+    romx_reader_close(reader);
+    (void)unlink(output);
+    return 1;
 }
 
 static int test_multi_entry_and_mutable(const char *directory)
@@ -280,10 +543,22 @@ static int test_multi_entry_and_mutable(const char *directory)
             (romx_mutable_bundle_path_entry_t)ROMX_MUTABLE_BUNDLE_PATH_ENTRY_INIT;
         flat_entries[1].relative_path = "save-2.sav";
         flat_entries[1].source_path = rtc_path;
-        mutable_options.data_capacity = UINT64_C(512);
+        /* A bundle with no explicit capacity receives an object-level growth
+         * margin from libromx without a separate measure pass. */
+        mutable_options.data_capacity = UINT64_C(0);
         CHECK(romx_mutable_bundle_write_path_entries(output,
             ROMX_MUTABLE_NAMESPACE_SAVE, "libretro", bundle_entries, 2U,
             NULL, &mutable_options, &object, &error) == ROMX_OK);
+        CHECK(object.data_capacity > object.data_size);
+        {
+            uint64_t reserved_capacity = object.data_capacity;
+            mutable_options.data_capacity = UINT64_C(512);
+            object = (romx_mutable_object_info_t)ROMX_MUTABLE_OBJECT_INFO_INIT;
+            CHECK(romx_mutable_bundle_write_path_entries(output,
+                ROMX_MUTABLE_NAMESPACE_SAVE, "LIBRETRO", bundle_entries, 2U,
+                NULL, &mutable_options, &object, &error) == ROMX_OK);
+            CHECK(object.data_capacity == reserved_capacity);
+        }
         object = (romx_mutable_object_info_t)ROMX_MUTABLE_OBJECT_INFO_INIT;
         CHECK(romx_mutable_bundle_write_path_entries(output,
             ROMX_MUTABLE_NAMESPACE_SAVE, "slot-2", flat_entries, 2U,
@@ -715,15 +990,102 @@ static int test_registry_status(void)
     return 1;
 }
 
+static int test_mutable_region_copy(const char *directory)
+{
+    static const uint8_t save_bytes[] = { 's', 'a', 'v', 'e', 0x00U };
+    static const uint8_t private_bytes[] = { 0x11U, 0x22U, 0x33U, 0x44U };
+    char source_path[1024];
+    char destination_path[1024];
+    char mismatch_path[1024];
+    memory_source_t save_source = { save_bytes, sizeof(save_bytes) };
+    memory_source_t private_source = { private_bytes, sizeof(private_bytes) };
+    romx_io_t save_io = memory_io(&save_source);
+    romx_io_t private_io = memory_io(&private_source);
+    romx_mutable_write_options_t options = ROMX_MUTABLE_WRITE_OPTIONS_INIT;
+    romx_mutable_object_info_t object = ROMX_MUTABLE_OBJECT_INFO_INIT;
+    romx_mutable_object_info_t restored = ROMX_MUTABLE_OBJECT_INFO_INIT;
+    romx_reader_t *reader = NULL;
+    romx_info_t info = ROMX_INFO_INIT;
+    romx_mutable_file_t *file = NULL;
+    romx_error_t error;
+    uint32_t count;
+    uint64_t bytes_read;
+    uint8_t restored_bytes[sizeof(save_bytes)];
+    uint8_t before[16];
+    uint8_t after[16];
+
+    (void)snprintf(source_path, sizeof(source_path), "%s/copy-source.romx",
+        directory);
+    (void)snprintf(destination_path, sizeof(destination_path),
+        "%s/copy-destination.romx", directory);
+    (void)snprintf(mismatch_path, sizeof(mismatch_path),
+        "%s/copy-mismatch.romx", directory);
+    (void)unlink(source_path);
+    (void)unlink(destination_path);
+    (void)unlink(mismatch_path);
+
+    CHECK(create_mutable_test_container(source_path));
+    CHECK(create_mutable_test_container(destination_path));
+    options.data_capacity = UINT64_C(64);
+    options.io_chunk_size = UINT32_C(1024);
+    CHECK(romx_mutable_write_io_path(source_path,
+        ROMX_MUTABLE_NAMESPACE_SAVE, "slot/save.srm", &save_io, &options,
+        &object, &error) == ROMX_OK);
+    object = (romx_mutable_object_info_t)ROMX_MUTABLE_OBJECT_INFO_INIT;
+    CHECK(romx_mutable_write_io_path(source_path,
+        ROMX_MUTABLE_NAMESPACE_PRIVATE, "private/blob", &private_io,
+        &options, &object, &error) == ROMX_OK);
+
+    CHECK(romx_mutable_copy_region_path(source_path, destination_path,
+        &error) == ROMX_OK);
+    CHECK(romx_reader_open_path(destination_path, NULL, &reader, &error) ==
+        ROMX_OK);
+    CHECK(romx_reader_get_mutable_object_count(reader, &count, &error) ==
+        ROMX_OK && count == UINT32_C(2));
+    CHECK(romx_reader_find_mutable_object(reader,
+        ROMX_MUTABLE_NAMESPACE_SAVE, "slot/save.srm", &restored, &error) ==
+        ROMX_OK && restored.data_size == sizeof(save_bytes));
+    CHECK(romx_mutable_file_open(reader, ROMX_MUTABLE_NAMESPACE_SAVE,
+        "slot/save.srm", &file, &error) == ROMX_OK);
+    CHECK(romx_mutable_file_read(file, restored_bytes, sizeof(restored_bytes),
+        &bytes_read, &error) == ROMX_OK && bytes_read == sizeof(restored_bytes) &&
+        memcmp(restored_bytes, save_bytes, sizeof(save_bytes)) == 0);
+    romx_mutable_file_close(file);
+    file = NULL;
+    CHECK(romx_reader_find_mutable_object(reader,
+        ROMX_MUTABLE_NAMESPACE_PRIVATE, "private/blob", &restored, &error) ==
+        ROMX_OK && restored.data_size == sizeof(private_bytes));
+    CHECK(romx_reader_get_info(reader, &info, &error) == ROMX_OK);
+    romx_reader_close(reader);
+    reader = NULL;
+
+    /* A capacity mismatch is rejected before opening the destination sink. */
+    CHECK(create_mutable_test_container_with_capacity(mismatch_path,
+        UINT64_C(16384)));
+    CHECK(read_file_at(mismatch_path, info.mutable_region.offset, before,
+        sizeof(before)));
+    CHECK(romx_mutable_copy_region_path(source_path, mismatch_path,
+        &error) == ROMX_E_MUTABLE_NO_SPACE);
+    CHECK(read_file_at(mismatch_path, info.mutable_region.offset, after,
+        sizeof(after)) && memcmp(before, after, sizeof(before)) == 0);
+
+    (void)unlink(source_path);
+    (void)unlink(destination_path);
+    (void)unlink(mismatch_path);
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr, "usage: %s OUTPUT_DIRECTORY\n", argv[0]);
         return 2;
     }
-    if (!test_multi_entry_and_mutable(argv[1]) ||
+    if (!test_mutable_write_retry_after_failure(argv[1]) ||
+        !test_multi_entry_and_mutable(argv[1]) ||
         !test_optional_payload_probe(argv[1]) ||
-        !test_registry_status()) return 1;
+        !test_registry_status() ||
+        !test_mutable_region_copy(argv[1])) return 1;
     puts("ROMX 0.2.0 writer, mutable bundle/STATS, commit, and probe tests passed");
     return 0;
 }

@@ -68,7 +68,8 @@ static int load_settings(const romx_writer_options_t *options,
 {
     const romx_writer_flags_t allowed = ROMX_WRITER_IMMUTABLE_SHA256 |
         ROMX_WRITER_REPLACE_EXISTING | ROMX_WRITER_DURABLE |
-        ROMX_WRITER_PROBE_PAYLOAD;
+        ROMX_WRITER_PROBE_PAYLOAD | ROMX_WRITER_COMPUTE_METADATA_CRC32 |
+        ROMX_WRITER_DIRECT_OUTPUT;
     memset(settings, 0, sizeof(*settings));
     settings->max_metadata_size = ROMX_DEFAULT_MAX_METADATA_SIZE;
     settings->max_cover_size = ROMX_DEFAULT_MAX_COVER_SIZE;
@@ -261,6 +262,57 @@ static romx_result_t create_temporary(const char *destination,
     return ROMX_OK;
 }
 
+static romx_result_t open_direct(const char *destination, int replace,
+    int *descriptor_out, romx_error_t *error)
+{
+    int descriptor = -1;
+#if defined(_WIN32)
+    wchar_t *wide = to_wide(destination);
+    int flags = _O_WRONLY | _O_CREAT | _O_BINARY |
+        (replace ? _O_TRUNC : _O_EXCL);
+    if (wide != NULL) {
+        if (_wsopen_s(&descriptor, wide, flags, _SH_DENYNO,
+            _S_IREAD | _S_IWRITE) != 0) descriptor = -1;
+    }
+    free(wide);
+#else
+    int flags = O_WRONLY | O_CREAT | (replace ? O_TRUNC : O_EXCL);
+    descriptor = open(destination, flags, 0666);
+#endif
+    if (descriptor < 0) {
+        int code = errno;
+        return romx_error_set(error,
+            code == EEXIST ? ROMX_E_EXISTS : ROMX_E_WRITE, code,
+            ROMX_OFFSET_UNKNOWN, "failed to open direct ROMX output");
+    }
+    *descriptor_out = descriptor;
+    return ROMX_OK;
+}
+
+static romx_result_t patch_metadata_crc32(uint8_t *metadata, size_t size,
+    uint32_t crc, romx_error_t *error)
+{
+    static const char marker[] = "\"crc32\":\"00000000\"";
+    static const char digits[] = "0123456789abcdef";
+    size_t marker_size = sizeof(marker) - 1U;
+    size_t index;
+    if (metadata == NULL || size < marker_size)
+        return romx_error_set(error, ROMX_E_METADATA_SCHEMA, 0,
+            ROMX_OFFSET_UNKNOWN, "metadata CRC32 placeholder is missing");
+    for (index = 0U; index + marker_size <= size; ++index) {
+        if (memcmp(metadata + index, marker, marker_size) == 0) {
+            size_t digit;
+            for (digit = 0U; digit < 8U; ++digit) {
+                metadata[index + 9U + digit] =
+                    (uint8_t)digits[(crc >> (28U - digit * 4U)) & 0x0fU];
+            }
+            return ROMX_OK;
+        }
+    }
+    return romx_error_set(error, ROMX_E_METADATA_SCHEMA, 0,
+        ROMX_OFFSET_UNKNOWN, "metadata CRC32 placeholder is missing");
+}
+
 static romx_result_t close_output(int descriptor, int durable,
     romx_error_t *error)
 {
@@ -345,20 +397,31 @@ static romx_result_t memory_read_at(void *user, uint64_t offset,
 }
 
 static romx_result_t write_zeroes(int descriptor, uint64_t size,
-    uint64_t offset, romx_sha256_context_t *sha, romx_error_t *error)
+    uint64_t offset, uint32_t chunk_size, romx_sha256_context_t *sha,
+    romx_error_t *error)
 {
-    uint8_t zeroes[4096] = { 0 };
+    size_t buffer_size;
+    uint8_t *zeroes;
     uint64_t written = UINT64_C(0);
+    romx_result_t result = ROMX_OK;
+    if (size == UINT64_C(0)) return ROMX_OK;
+    buffer_size = size > (uint64_t)chunk_size ? (size_t)chunk_size : (size_t)size;
+    zeroes = (uint8_t *)calloc(1U, buffer_size);
+    if (zeroes == NULL) {
+        return romx_error_set(error, ROMX_E_OUT_OF_MEMORY, 0,
+            ROMX_OFFSET_UNKNOWN, "failed to allocate zero-fill buffer");
+    }
     while (written < size) {
-        size_t count = (size - written) > sizeof(zeroes)
-            ? sizeof(zeroes) : (size_t)(size - written);
-        romx_result_t result = sha != NULL
+        size_t count = (size - written) > (uint64_t)buffer_size
+            ? buffer_size : (size_t)(size - written);
+        result = sha != NULL
             ? write_immutable(descriptor, zeroes, count, offset + written, sha, error)
             : write_all(descriptor, zeroes, count, offset + written, error);
-        if (result != ROMX_OK) return result;
+        if (result != ROMX_OK) break;
         written += count;
     }
-    return ROMX_OK;
+    free(zeroes);
+    return result;
 }
 
 static romx_result_t build_mutable_header(uint8_t header[4096],
@@ -396,6 +459,7 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
     uint8_t *ridx = NULL;
     uint8_t *probed_metadata = NULL;
     uint8_t *probed_cover = NULL;
+    uint8_t *computed_metadata = NULL;
     romx_probe_t *probe = NULL;
     memory_input_t cover_memory;
     romx_io_t cover_memory_io = ROMX_IO_INIT;
@@ -410,10 +474,13 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
     uint64_t immutable_size;
     uint64_t file_size;
     uint32_t entrypoint = UINT32_MAX;
+    uint32_t metadata_crc32 = UINT32_C(0);
     uint32_t index;
     uint32_t supplied_report_size = UINT32_C(0);
     char *temporary = NULL;
     int descriptor = -1;
+    int direct_output = 0;
+    int direct_opened = 0;
     romx_sha256_context_t immutable_context;
     uint8_t immutable_hash[32] = { 0 };
     uint8_t footer[ROMX_FOOTER_SIZE];
@@ -511,6 +578,23 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
         effective_metadata_size > (uint64_t)SIZE_MAX) {
         result = ROMX_E_METADATA_TOO_LARGE; goto fail;
     }
+    if ((settings.flags & ROMX_WRITER_COMPUTE_METADATA_CRC32) != 0U) {
+        if (effective_metadata == NULL || effective_metadata_size == UINT64_C(0)) {
+            result = romx_error_set(error, ROMX_E_METADATA_SCHEMA, 0,
+                ROMX_OFFSET_UNKNOWN,
+                "metadata is required for computed CRC32");
+            goto fail;
+        }
+        computed_metadata = (uint8_t *)malloc((size_t)effective_metadata_size);
+        if (computed_metadata == NULL) {
+            result = romx_error_set(error, ROMX_E_OUT_OF_MEMORY, 0,
+                ROMX_OFFSET_UNKNOWN, "failed to copy metadata for CRC32");
+            goto fail;
+        }
+        memcpy(computed_metadata, effective_metadata,
+            (size_t)effective_metadata_size);
+        effective_metadata = computed_metadata;
+    }
     if (effective_metadata != NULL) {
         result = romx_validate_metadata_bytes(effective_metadata,
             (size_t)effective_metadata_size, error);
@@ -530,8 +614,14 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
     if (ridx_size > (uint64_t)SIZE_MAX) { result = ROMX_E_RANGE; goto fail; }
     ridx = (uint8_t *)calloc(1U, (size_t)ridx_size);
     if (ridx == NULL) { result = ROMX_E_OUT_OF_MEMORY; goto fail; }
-    result = create_temporary(destination, &temporary, &descriptor, error);
+    direct_output = (settings.flags & ROMX_WRITER_DIRECT_OUTPUT) != 0U;
+    result = direct_output
+        ? open_direct(destination,
+            (settings.flags & ROMX_WRITER_REPLACE_EXISTING) != 0U,
+            &descriptor, error)
+        : create_temporary(destination, &temporary, &descriptor, error);
     if (result != ROMX_OK) goto fail;
+    direct_opened = direct_output;
     if ((settings.flags & ROMX_WRITER_IMMUTABLE_SHA256) != 0U)
         romx_sha256_init(&immutable_context);
 
@@ -539,18 +629,36 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
         uint32_t current = index == 0U ? entrypoint :
             (index <= entrypoint ? index - 1U : index);
         states[current].offset = offset;
+        uint32_t *entry_crc =
+            (entries[current].flags & ROMX_RIDX_HAS_CRC32) != 0U
+                ? &states[current].crc32 : NULL;
+        if ((settings.flags & ROMX_WRITER_COMPUTE_METADATA_CRC32) != 0U &&
+            current == entrypoint && entry_crc == NULL) {
+            entry_crc = &metadata_crc32;
+        }
         result = stream_entry(entries[current].source, states[current].size,
             descriptor, offset, settings.io_chunk_size,
             (settings.flags & ROMX_WRITER_IMMUTABLE_SHA256) != 0U
                 ? &immutable_context : NULL,
-            (entries[current].flags & ROMX_RIDX_HAS_CRC32) != 0U
-                ? &states[current].crc32 : NULL,
+            entry_crc,
             error);
         if (result != ROMX_OK) goto fail;
+        if ((settings.flags & ROMX_WRITER_COMPUTE_METADATA_CRC32) != 0U &&
+            current == entrypoint && entry_crc == &states[current].crc32) {
+            metadata_crc32 = states[current].crc32;
+        }
         if (states[current].size > UINT64_MAX - offset) { result = ROMX_E_RANGE; goto fail; }
         offset += states[current].size;
     }
     payload_size = offset;
+    if ((settings.flags & ROMX_WRITER_COMPUTE_METADATA_CRC32) != 0U) {
+        result = patch_metadata_crc32(computed_metadata,
+            (size_t)effective_metadata_size, metadata_crc32, error);
+        if (result != ROMX_OK) goto fail;
+        result = romx_validate_metadata_bytes(effective_metadata,
+            (size_t)effective_metadata_size, error);
+        if (result != ROMX_OK) goto fail;
+    }
 
     memcpy(ridx, "RIDX", 4U);
     romx_write_le16(ridx + 0x04U, UINT16_C(1));
@@ -603,6 +711,7 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
         uint64_t aligned = (offset + UINT64_C(4095)) & ~UINT64_C(4095);
         immutable_padding = aligned - offset;
         result = write_zeroes(descriptor, immutable_padding, offset,
+            settings.io_chunk_size,
             (settings.flags & ROMX_WRITER_IMMUTABLE_SHA256) != 0U
                 ? &immutable_context : NULL, error);
         if (result != ROMX_OK) goto fail;
@@ -613,7 +722,7 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
         if (result != ROMX_OK) goto fail;
         result = write_zeroes(descriptor,
             settings.mutable_capacity - sizeof(mutable_header),
-            offset + sizeof(mutable_header), NULL, error);
+            offset + sizeof(mutable_header), settings.io_chunk_size, NULL, error);
         if (result != ROMX_OK) goto fail;
     }
     immutable_size = offset;
@@ -646,10 +755,15 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
         (settings.flags & ROMX_WRITER_DURABLE) != 0U, error);
     descriptor = -1;
     if (result != ROMX_OK) goto fail;
-    result = publish_temporary(temporary, destination,
-        (settings.flags & ROMX_WRITER_REPLACE_EXISTING) != 0U,
-        (settings.flags & ROMX_WRITER_DURABLE) != 0U, error);
-    if (result != ROMX_OK) goto fail;
+    if (temporary != NULL) {
+        result = publish_temporary(temporary, destination,
+            (settings.flags & ROMX_WRITER_REPLACE_EXISTING) != 0U,
+            (settings.flags & ROMX_WRITER_DURABLE) != 0U, error);
+        if (result != ROMX_OK) goto fail;
+    } else if ((settings.flags & ROMX_WRITER_DURABLE) != 0U) {
+        result = romx_sync_parent_directory(destination, error);
+        if (result != ROMX_OK) goto fail;
+    }
     if (report != NULL) {
         report->file_size = file_size;
         report->payload_size = payload_size;
@@ -665,7 +779,8 @@ romx_result_t romx_writer_write_io_entries(const char *destination,
         memcpy(report->immutable_sha256, immutable_hash, 32U);
     }
     free(temporary); free(states); free(ridx);
-    free(probed_metadata); free(probed_cover); romx_probe_close(probe);
+    free(probed_metadata); free(probed_cover); free(computed_metadata);
+    romx_probe_close(probe);
     romx_error_clear(error);
     (void)immutable_size;
     return ROMX_OK;
@@ -679,8 +794,10 @@ fail:
 #endif
     }
     if (temporary != NULL) remove_utf8(temporary);
+    else if (direct_output && direct_opened) remove_utf8(destination);
     free(temporary); free(states); free(ridx);
-    free(probed_metadata); free(probed_cover); romx_probe_close(probe);
+    free(probed_metadata); free(probed_cover); free(computed_metadata);
+    romx_probe_close(probe);
     return result;
 }
 
