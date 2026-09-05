@@ -20,6 +20,17 @@ def fixture_files(root: Path) -> set[Path]:
     }
 
 
+def files_match(expected: Path, generated: Path, relative: Path) -> bool:
+    # Path.write_text() uses the host's native line endings.  Manifest files
+    # are text vectors, so their line endings must not make the check fail on
+    # Windows; ROMX payloads and every other fixture remain byte-for-byte.
+    if relative.name.endswith(".manifest.json"):
+        return expected.read_bytes().replace(b"\r\n", b"\n") == generated.read_bytes().replace(
+            b"\r\n", b"\n"
+        )
+    return filecmp.cmp(expected, generated, shallow=False)
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(f"usage: {Path(sys.argv[0]).name} SPEC_ROOT", file=sys.stderr)
@@ -43,7 +54,7 @@ def main() -> int:
         mismatches = [
             relative
             for relative in sorted(expected_files)
-            if not filecmp.cmp(expected / relative, generated / relative, shallow=False)
+            if not files_match(expected / relative, generated / relative, relative)
         ]
         if mismatches:
             print("frozen fixture contents differ:", file=sys.stderr)
