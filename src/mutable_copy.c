@@ -217,6 +217,12 @@ romx_result_t romx_mutable_copy_region_path(
         goto done;
     }
 
+    /* All destination validation is complete.  Release the reader before
+     * opening the same file for writing; Windows CRT sharing rules reject a
+     * second writable handle while the reader remains open. */
+    romx_reader_close(destination_reader);
+    destination_reader = NULL;
+
     destination = open_destination(utf8_destination_romx_path);
     if (destination == NULL) {
         result = romx_error_set(error, ROMX_E_IO, errno,
