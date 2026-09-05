@@ -134,10 +134,10 @@ static int check_candidate(const romx_save_catalog_t *catalog, uint32_t index,
         &error) == ROMX_OK);
     CHECK(strcmp(candidate.key, key) == 0);
     CHECK(candidate.file_count == expected_files);
-    CHECK((candidate.flags & ROMX_SAVE_CANDIDATE_IS_DIRECTORY) != 0U ==
+    CHECK(((candidate.flags & ROMX_SAVE_CANDIDATE_IS_DIRECTORY) != 0U) ==
         (is_directory != 0));
     CHECK(candidate.source_format == source_format);
-    CHECK((candidate.flags & ROMX_SAVE_CANDIDATE_IS_MULTI_FILE) != 0U ==
+    CHECK(((candidate.flags & ROMX_SAVE_CANDIDATE_IS_MULTI_FILE) != 0U) ==
         (expected_files > 1U));
     CHECK(romx_save_catalog_get_file_count(catalog, index, &count,
         &error) == ROMX_OK && count == expected_files);
