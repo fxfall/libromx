@@ -69,7 +69,7 @@ jobs:
           path: romx-spec
 
       - name: Verify frozen fixtures
-        run: python romx-spec/tools/generate_fixtures.py --check
+        run: python tests/verify_fixtures.py romx-spec
 
       - name: Configure
         run: >-
